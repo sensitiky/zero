@@ -1,4 +1,4 @@
-# PRD — Núcleo de chat multi-agente con worktrees (Zero)
+# PRD — Zero: núcleo de chat multi-agente con worktrees
 
 ## Status
 
@@ -227,16 +227,14 @@ anota por qué se eligió, para que revertirla sea una decisión y no un descubr
 
 ## Open questions
 
-Pendientes de decisión del usuario, porque cambian el producto y no el código:
+Ninguna. Las tres que quedaban abiertas se cerraron con decisión del usuario:
 
-1. **Nombre del producto.** Asumido "Zero" por el directorio del proyecto. Va al bundle id y a
-   la UI, así que conviene fijarlo antes de crear el target de Xcode.
-2. **Repo público u open source, y con qué licencia.** Determina las dos siguientes.
-3. **Piso de versión de macOS.** El PRD propone macOS 26.0: es el default del toolchain
-   instalado, el único SDK presente en la máquina, y elimina todo `@available` del código. Si
-   la app es de uso propio, es la elección correcta sin discusión. Si el repo es público,
-   bajar a macOS 15 amplía el alcance a cambio de ramas de compatibilidad en la UI y de
-   instalar un SDK que hoy no está.
+- **Nombre del producto: Zero.** Bundle id `tech.incu.zero`. Prefijo de rama de worktree
+  `zero/{slug}-{id-corto}`.
+- **Repo privado, de uso propio.** Sin licencia pública ni distribución a terceros en v1.
+- **Piso de versión: macOS 26.0.** Confirmado. Cero `@available` en todo el código, Apple
+  Silicon únicamente, y auto-update descartado también a futuro mientras el repo siga privado
+  (lo que convierte en definitiva la decisión resuelta sobre Sparkle).
 
 ## Conflicts / dependencies
 
