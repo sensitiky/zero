@@ -190,25 +190,53 @@ Al fijar el deployment target en macOS 26, la app adopta el lenguaje de diseño 
 directamente, sin capa de compatibilidad. Los materiales y controles son los nativos de la
 versión, no una reimplementación.
 
+## Decisiones resueltas
+
+Resueltas por juicio de ingeniería, con el default declarado. Cada una es reversible y se
+anota por qué se eligió, para que revertirla sea una decisión y no un descubrimiento.
+
+- **Persistencia: SwiftData, con puerta de medición en Fase B.** Es la opción nativa. No se
+  construye ninguna capa de abstracción de store para "poder cambiar después": eso sería una
+  interfaz con una sola implementación. En su lugar, Fase B incluye un benchmark de escritura
+  (10k mensajes y 10k `UsageRecord` en append continuo) *antes* de que exista código encima.
+  Si el p95 de append o la memoria no aguantan, se cambia a SQLite ahí mismo, cuando el
+  refactor cuesta poco.
+
+- **Adapters ACP: solo comandos ya instalados, nunca `npx` bajo demanda.** El comando de cada
+  adapter ACP es configurable (FR-12) y se detecta como cualquier otro proveedor (FR-14). Se
+  descarta descargar y ejecutar código de terceros al abrir una sesión: una app cuyo trabajo
+  es pedir permiso antes de cada operación no puede tener como default bajar un paquete de la
+  red y ejecutarlo sin preguntar. Si el adapter no está, el proveedor aparece deshabilitado
+  con la razón. Node en runtime queda aceptado, pero solo el que el usuario ya instaló.
+
+- **Tabla de precios: horneada en la app, se actualiza con cada release.** Sin red saliente.
+  La app no necesita red para nada más y añadirla solo para precios no lo justifica. Si falta
+  el precio de un modelo, se muestran los tokens y el costo va marcado como desconocido (FR-30).
+
+- **Nombres de rama de worktree: `zero/{slug}-{id-corto}`,** donde el slug se deriva del prompt
+  inicial. Si la rama ya existe, se sufija con contador. Nunca se reutiliza una rama existente
+  ni se fuerza nada sobre ella.
+
+- **Auto-update: fuera de v1.** Se distribuye el DMG a mano. Sparkle es una dependencia de
+  terceros y el NFR de plataforma pide justificar cada una; para un v1 sin usuarios externos
+  no hay caso. Se revisa si el repo pasa a público.
+
+- **Transporte de los adapters: stdio, sin abstracción de transporte.** El app-server de Codex
+  ya soporta WebSocket, así que el día que haga falta remoto el refactor está bien entendido.
+  Hasta entonces no se paga con una capa que tendría un solo implementador.
+
 ## Open questions
 
-1. **Nombre del producto.** Asumido "Zero" por el directorio del proyecto. Confirmar o cambiar antes de que aparezca en el bundle id.
-   Rta: Si
-2. **SwiftData vs SQLite directo** (GRDB o el driver de C). SwiftData es la opción nativa pero el patrón es append-heavy. Propuesta: medir en Fase B con volumen realista y decidir con dato, no con preferencia.
-   Rta: SwiftData siempre
-3. **Cómo se lanzan los adapters ACP.** Los de Gemini y OpenCode son paquetes Node de terceros. ¿`npx` bajo demanda, o exigir instalación previa y solo detectarlos? Esto reintroduce Node en runtime, aunque no en el bundle.
-   Rta: On demand
-4. **Tabla de precios.** ¿Se hornea en la app y se actualiza con releases, o se busca en remoto? Buscarla en remoto implica red saliente, que hasta ahora la app no necesita.
-   Rta: Se hornea en la app
-5. **Modelo de nombres de rama** para los worktrees, y qué pasa cuando la rama ya existe.
-   Rta: a tu criteria
-6. **Licencia y si el repo es público.** t3code argumenta la apertura como garantía de fork; si eso importa aquí, condiciona decisiones desde ya. Está acoplada a la pregunta 9: un repo público con piso en macOS 26 excluye a buena parte de los usuarios potenciales.
-   Rta: es un producto para mi
-7. **Auto-update.** Sparkle es la opción estándar y es una dependencia de terceros, contra el NFR de plataforma. ¿Se acepta la excepción o se distribuye manual?
-   Rta: se acepta la excepcion
-8. **Transporte remoto.** El app-server de Codex ya soporta WebSocket. Está fuera de v1, pero ¿se reserva la abstracción de transporte en el adapter, o se asume stdio y se refactoriza el día que haga falta?
-9. **Piso de versión de macOS.** El PRD propone macOS 26.0, que es el default del toolchain y elimina todo `@available`. Si la app es solo para tu máquina, es la elección correcta sin discusión. Si el repo va a ser público, bajar a macOS 15 amplía el alcance a cambio de ramas de compatibilidad en la capa de UI. Requiere además instalar el SDK de macOS 15, que hoy no está en la máquina.
-   Rta: elije la mejor opcion
+Pendientes de decisión del usuario, porque cambian el producto y no el código:
+
+1. **Nombre del producto.** Asumido "Zero" por el directorio del proyecto. Va al bundle id y a
+   la UI, así que conviene fijarlo antes de crear el target de Xcode.
+2. **Repo público u open source, y con qué licencia.** Determina las dos siguientes.
+3. **Piso de versión de macOS.** El PRD propone macOS 26.0: es el default del toolchain
+   instalado, el único SDK presente en la máquina, y elimina todo `@available` del código. Si
+   la app es de uso propio, es la elección correcta sin discusión. Si el repo es público,
+   bajar a macOS 15 amplía el alcance a cambio de ramas de compatibilidad en la UI y de
+   instalar un SDK que hoy no está.
 
 ## Conflicts / dependencies
 
