@@ -26,5 +26,13 @@
     "branch-model": "main + develop, features en feat/{slug}"
   },
   "notes": "STATE.md canónico de incu-board no presente en la máquina; esquema derivado de la tabla del skill incu-way-development.",
-  "updatedAt": "2026-08-20"
+  "updatedAt": "2026-08-20",
+  "toolchain": {
+    "macos": "26.5.2",
+    "swift": "6.3.3",
+    "xcode": "26.6",
+    "sdk": "macosx26.5",
+    "deploymentTarget": "macos26.0",
+    "arch": "arm64"
+  }
 }

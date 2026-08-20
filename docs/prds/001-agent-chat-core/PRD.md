@@ -1,15 +1,16 @@
 # PRD — Núcleo de chat multi-agente con worktrees (Zero)
 
 ## Status
+
 In Review
 
 ## Contexto y referencias
 
-| Referencia | Qué tomamos | Qué descartamos |
-|---|---|---|
-| [t3code](https://github.com/pingdotgg/t3code) | Arquitectura sin PTY: el CLI del proveedor es un subproceso long-lived que habla NDJSON por stdio, y la UI de chat es nativa. Modelo de adapters por proveedor. | Server Node + clientes Electron/web/móvil. |
-| [Superset](https://docs.superset.sh) | Un worktree git aislado por tarea, N agentes en paralelo, BYO subscription. | Chat con API keys propias, automations, MCP server, relay remoto. |
-| [Orca](https://www.onorca.dev/docs) | Sesiones persistentes con hibernación, worktrees reales (no abstracciones). | Editor de código, panel de browser, terminal embebida, SSH. |
+| Referencia                                    | Qué tomamos                                                                                                                                                     | Qué descartamos                                                   |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| [t3code](https://github.com/pingdotgg/t3code) | Arquitectura sin PTY: el CLI del proveedor es un subproceso long-lived que habla NDJSON por stdio, y la UI de chat es nativa. Modelo de adapters por proveedor. | Server Node + clientes Electron/web/móvil.                        |
+| [Superset](https://docs.superset.sh)          | Un worktree git aislado por tarea, N agentes en paralelo, BYO subscription.                                                                                     | Chat con API keys propias, automations, MCP server, relay remoto. |
+| [Orca](https://www.onorca.dev/docs)           | Sesiones persistentes con hibernación, worktrees reales (no abstracciones).                                                                                     | Editor de código, panel de browser, terminal embebida, SSH.       |
 
 Hallazgo de discovery que habilita este PRD: los tres proveedores objetivo exponen protocolos
 de proceso a proceso sobre stdio, así que no hace falta Node ni Electron en el bundle.
@@ -119,7 +120,7 @@ Fuera de v1, explícitamente:
 
 ### Rendimiento — criterio de aceptación, no aspiración
 
-Medido en Apple Silicon, build release:
+Medido en Apple Silicon, build release, macOS 26:
 
 - Cold start hasta ventana interactiva: < 1 s.
 - Memoria residente con 5 sesiones abiertas y una streameando: < 400 MB.
@@ -129,8 +130,22 @@ Medido en Apple Silicon, build release:
 
 ### Plataforma
 
-- macOS 15+, Swift 6 con strict concurrency, SwiftUI, sin dependencias de terceros salvo justificación explícita por caso.
+Toolchain de referencia, verificado en la máquina de desarrollo:
+
+| | Versión |
+|---|---|
+| macOS | 26.5.2 (build 25F84) |
+| Swift | 6.3.3 (swiftlang-6.3.3.1.3) |
+| Xcode | 26.6 (build 17F113) |
+| SDK | macOS 26.5 — el único instalado |
+| Target triple | `arm64-apple-macosx26.0` |
+
+- **Deployment target: macOS 26.0.** Es el default del toolchain instalado y la propuesta del PRD. Consecuencia deliberada: cero ramas de `@available` en todo el código, y acceso directo al SwiftUI y al lenguaje de diseño de macOS 26 sin fallbacks. Coste: excluye macOS 15 y anteriores. Ver Open Questions — la decisión depende de si el repo es público.
+- Swift 6 con strict concurrency activado en modo completo. Los adapters son el núcleo concurrente de la app (un subproceso, dos pipes y un stream por sesión), así que el aislamiento lo verifica el compilador y no la revisión.
+- Apple Silicon únicamente. Sin binario universal ni soporte Intel.
+- Sin dependencias de terceros salvo justificación explícita caso por caso.
 - Distribución fuera del App Sandbox: DMG firmado y notarizado con Hardened Runtime. El sandbox queda descartado por diseño, porque prohíbe lanzar binarios arbitrarios y leer rutas del usuario, que son el núcleo del producto.
+- El toolchain se fija en el repo (`.swift-version` y la versión de Xcode documentada) para que el build sea reproducible y no dependa de qué tenga instalado quien compile.
 
 ### Seguridad
 
@@ -171,16 +186,29 @@ Creación de sesión desde un solo campo con selector de agente. Command palette
 demás. La regla que gobierna cada decisión de esta capa: si algo se ve como salida de terminal,
 está mal renderizado.
 
+Al fijar el deployment target en macOS 26, la app adopta el lenguaje de diseño del sistema
+directamente, sin capa de compatibilidad. Los materiales y controles son los nativos de la
+versión, no una reimplementación.
+
 ## Open questions
 
 1. **Nombre del producto.** Asumido "Zero" por el directorio del proyecto. Confirmar o cambiar antes de que aparezca en el bundle id.
+   Rta: Si
 2. **SwiftData vs SQLite directo** (GRDB o el driver de C). SwiftData es la opción nativa pero el patrón es append-heavy. Propuesta: medir en Fase B con volumen realista y decidir con dato, no con preferencia.
+   Rta: SwiftData siempre
 3. **Cómo se lanzan los adapters ACP.** Los de Gemini y OpenCode son paquetes Node de terceros. ¿`npx` bajo demanda, o exigir instalación previa y solo detectarlos? Esto reintroduce Node en runtime, aunque no en el bundle.
+   Rta: On demand
 4. **Tabla de precios.** ¿Se hornea en la app y se actualiza con releases, o se busca en remoto? Buscarla en remoto implica red saliente, que hasta ahora la app no necesita.
+   Rta: Se hornea en la app
 5. **Modelo de nombres de rama** para los worktrees, y qué pasa cuando la rama ya existe.
-6. **Licencia y si el repo es público.** t3code argumenta la apertura como garantía de fork; si eso importa aquí, condiciona decisiones desde ya.
+   Rta: a tu criteria
+6. **Licencia y si el repo es público.** t3code argumenta la apertura como garantía de fork; si eso importa aquí, condiciona decisiones desde ya. Está acoplada a la pregunta 9: un repo público con piso en macOS 26 excluye a buena parte de los usuarios potenciales.
+   Rta: es un producto para mi
 7. **Auto-update.** Sparkle es la opción estándar y es una dependencia de terceros, contra el NFR de plataforma. ¿Se acepta la excepción o se distribuye manual?
+   Rta: se acepta la excepcion
 8. **Transporte remoto.** El app-server de Codex ya soporta WebSocket. Está fuera de v1, pero ¿se reserva la abstracción de transporte en el adapter, o se asume stdio y se refactoriza el día que haga falta?
+9. **Piso de versión de macOS.** El PRD propone macOS 26.0, que es el default del toolchain y elimina todo `@available`. Si la app es solo para tu máquina, es la elección correcta sin discusión. Si el repo va a ser público, bajar a macOS 15 amplía el alcance a cambio de ramas de compatibilidad en la capa de UI. Requiere además instalar el SDK de macOS 15, que hoy no está en la máquina.
+   Rta: elije la mejor opcion
 
 ## Conflicts / dependencies
 
