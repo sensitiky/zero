@@ -1,0 +1,30 @@
+{
+  "slug": "001-agent-chat-core",
+  "title": "Núcleo de chat multi-agente con worktrees",
+  "flow": "feature",
+  "branch": "feat/001-agent-chat-core",
+  "isolation": "current-checkout-branch",
+  "phase": "prd",
+  "nextStep": "Gate 1 — revisión de PRD por el usuario",
+  "documents": {
+    "docs/prds/001-agent-chat-core/PRD.md": "in-review",
+    "docs/prds/001-agent-chat-core/PLAN.md": "not-started",
+    "docs/prds/001-agent-chat-core/TESTING.md": "not-started"
+  },
+  "gates": [
+    { "id": "prd", "status": "pending", "url": null },
+    { "id": "plan", "status": "pending", "url": null },
+    { "id": "testing", "status": "pending", "url": null },
+    { "id": "pr-develop", "status": "pending", "url": null },
+    { "id": "pr-main", "status": "pending", "url": null }
+  ],
+  "steps": [],
+  "decisions": {
+    "scope-v1": "Chat nativo sin PTY + multi-agente + worktrees. Sin diff viewer, editor, browser ni terminal.",
+    "providers-v1": "Claude Code (stream-json) + Codex (app-server) + ACP genérico",
+    "distribution": "DMG notarizado, Hardened Runtime, fuera del App Sandbox",
+    "branch-model": "main + develop, features en feat/{slug}"
+  },
+  "notes": "STATE.md canónico de incu-board no presente en la máquina; esquema derivado de la tabla del skill incu-way-development.",
+  "updatedAt": "2026-08-20"
+}
