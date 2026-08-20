@@ -4,17 +4,17 @@
   "flow": "feature",
   "branch": "feat/001-agent-chat-core",
   "isolation": "current-checkout-branch",
-  "phase": "prd",
-  "nextStep": "Gate 1 — esperando OK del usuario sobre el PRD (0 preguntas abiertas)",
+  "phase": "plan",
+  "nextStep": "Gate 2 — revisión del plan por el usuario",
   "documents": {
-    "docs/prds/001-agent-chat-core/PRD.md": "in-review",
-    "docs/prds/001-agent-chat-core/PLAN.md": "not-started",
+    "docs/prds/001-agent-chat-core/PRD.md": "approved",
+    "docs/prds/001-agent-chat-core/PLAN.md": "in-review",
     "docs/prds/001-agent-chat-core/TESTING.md": "not-started"
   },
   "gates": [
     {
       "id": "prd",
-      "status": "pending",
+      "status": "passed",
       "url": null
     },
     {
