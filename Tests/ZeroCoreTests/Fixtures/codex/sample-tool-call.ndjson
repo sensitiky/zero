@@ -1,0 +1,8 @@
+{"method":"turn/started","params":{"turn":{"id":"turn_002"}}}
+{"method":"item/started","params":{"item":{"id":"item_002","type":"mcpToolCall"}}}
+{"method":"item/completed","params":{"item":{"id":"item_002","type":"mcpToolCall","server":"filesys","tool":"write_file","arguments":"{\"path\":\"/tmp/test.txt\",\"content\":\"hello\"}","status":"pending"}}}
+{"id":"approval_001","method":"execCommandApproval","params":{"itemId":"item_002","threadId":"thr_001","turnId":"turn_002","command":"write /tmp/test.txt","cwd":"/workspace","reason":"Writing test file"}}
+{"id":"approval_001","result":{"decision":"accept"}}
+{"method":"item/started","params":{"item":{"id":"item_003","type":"mcpToolCall"}}}
+{"method":"item/completed","params":{"item":{"id":"item_003","type":"mcpToolCall","server":"filesys","tool":"write_file","arguments":"{\"path\":\"/tmp/test.txt\",\"content\":\"hello\"}","status":"succeeded","result":"{\"success\":true}"}}}
+{"method":"turn/completed","params":{"turn":{"id":"turn_002","status":"completed","stopReason":"endTurn"},"usage":{"inputTokens":15,"outputTokens":8}}}

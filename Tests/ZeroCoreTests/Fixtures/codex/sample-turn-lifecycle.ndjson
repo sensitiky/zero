@@ -1,0 +1,7 @@
+{"method":"turn/started","params":{"turn":{"id":"turn_001"}}}
+{"method":"item/started","params":{"item":{"id":"item_001","type":"agentMessage"}}}
+{"method":"item/agentMessage/delta","params":{"itemId":"item_001","deltaIndex":0,"text":"I'll help"}}
+{"method":"item/agentMessage/delta","params":{"itemId":"item_001","deltaIndex":1,"text":" you with"}}
+{"method":"item/agentMessage/delta","params":{"itemId":"item_001","deltaIndex":2,"text":" that."}}
+{"method":"item/completed","params":{"item":{"id":"item_001","type":"agentMessage","text":"I'll help you with that."}}}
+{"method":"turn/completed","params":{"turn":{"id":"turn_001","status":"completed","stopReason":"endTurn"},"usage":{"inputTokens":10,"outputTokens":5,"cacheReadTokens":0,"cacheWriteTokens":0}}}
