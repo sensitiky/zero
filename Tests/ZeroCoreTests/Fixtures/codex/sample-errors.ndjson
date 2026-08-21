@@ -1,0 +1,9 @@
+{"method":"turn/started","params":{"turn":{"id":"turn_004"}}}
+{"invalid json that will
+{"method":"unknownNotification","params":{"data":"unknown"}}
+{"id":"req_001","method":"unknownMethod","params":{}}
+{"id":"req_001","error":{"code":-32601,"message":"Method not found"}}
+{"method":"item/started","params":{"item":{"id":"item_005","type":"agentMessage"}}}
+{"method":"item/agentMessage/delta","params":{"itemId":"item_005","deltaIndex":0,"text":"continuing after errors"}}
+{"method":"item/completed","params":{"item":{"id":"item_005","type":"agentMessage","text":"continuing after errors"}}}
+{"method":"turn/completed","params":{"turn":{"id":"turn_004","status":"completed","stopReason":"endTurn"},"usage":{"inputTokens":5,"outputTokens":3}}}
