@@ -380,6 +380,7 @@ struct SessionRuntimeTests {
             store: store,
             gitService: try GitService(repositoryPath: repo),
             decoder: ThreadTrackingDecoder(recorder: recorder),
+            encoder: ClaudeCodeEncoder(),
             providerRegistry: ProviderRegistry()
         )
 

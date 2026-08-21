@@ -5,16 +5,16 @@ import SwiftData
 ///
 /// The runtime is a plain actor (not @MainActor), so NDJSON parsing and decoding happen on
 /// its own thread, avoiding main-thread stutter. Only batched persistence hops to the main actor.
-actor SessionRuntime {
+public actor SessionRuntime {
     /// Configuration for creating a new session.
-    struct CreationConfig: Sendable {
-        var repository: URL  // path to the git repository
-        var provider: ProviderDescriptor
-        var model: String
-        var prompt: String
-        var resumeSessionId: String?  // if resuming, the provider's session id
+    public struct CreationConfig: Sendable {
+        public var repository: URL  // path to the git repository
+        public var provider: ProviderDescriptor
+        public var model: String
+        public var prompt: String
+        public var resumeSessionId: String?  // if resuming, the provider's session id
 
-        init(
+        public init(
             repository: URL,
             provider: ProviderDescriptor,
             model: String,
@@ -30,7 +30,7 @@ actor SessionRuntime {
     }
 
     /// Reasons creation might fail.
-    enum CreationError: Error, Sendable, CustomStringConvertible {
+    public enum CreationError: Error, Sendable, CustomStringConvertible {
         /// Repository is dirty and cannot be used for a session.
         case repositoryIsDirty(path: String)
         /// Provider could not be resolved or started.
@@ -42,7 +42,7 @@ actor SessionRuntime {
         /// Process failed to start.
         case processError(String)
 
-        var description: String {
+        public var description: String {
             switch self {
             case .repositoryIsDirty(let path):
                 return "Repository at \(path) has uncommitted changes"
@@ -60,6 +60,12 @@ actor SessionRuntime {
 
     // Session is MainActor-confined; we only store its ID for safe cross-actor use.
     private let sessionID: UUID
+
+    /// The session's identity, readable without an actor hop.
+    ///
+    /// `nonisolated` for the same reason as `transcript`: it is an immutable `Sendable` value, and a
+    /// caller keying UI state by it should not pay a hop per lookup.
+    public nonisolated var id: UUID { sessionID }
     private let process: AgentProcess
     private let store: Store
     private let gitService: GitService
@@ -69,6 +75,7 @@ actor SessionRuntime {
     /// the opposite of FR-13. It also made the off-main-thread guarantee untestable, because no
     /// spy could be injected to observe where decoding actually runs.
     private var decoder: any ProtocolDecoder
+    private var encoder: any ProtocolEncoder
     private let providerRegistry: ProviderRegistry
 
     private var consumeTask: Task<Void, Never>?
@@ -80,17 +87,18 @@ actor SessionRuntime {
     ///
     /// `nonisolated` because `AsyncStream` is already `Sendable`: a consumer should be able to
     /// subscribe without awaiting the actor, the same way `AgentProcess.output` works.
-    nonisolated let transcript: AsyncStream<AgentEvent>
+    public nonisolated let transcript: AsyncStream<AgentEvent>
     private nonisolated let transcriptContinuation: AsyncStream<AgentEvent>.Continuation
 
     // MARK: - Initialization
 
-    init(
+    public init(
         sessionID: UUID,
         process: AgentProcess,
         store: Store,
         gitService: GitService,
         decoder: any ProtocolDecoder,
+        encoder: any ProtocolEncoder,
         providerRegistry: ProviderRegistry
     ) {
         self.sessionID = sessionID
@@ -98,6 +106,7 @@ actor SessionRuntime {
         self.store = store
         self.gitService = gitService
         self.decoder = decoder
+        self.encoder = encoder
         self.providerRegistry = providerRegistry
 
         // Capture continuation for async stream
@@ -115,7 +124,7 @@ actor SessionRuntime {
     /// - Parameter config: Configuration for the session.
     /// - Returns: A runtime ready to process events.
     /// - Throws: `CreationError` if any step fails. On failure, the worktree is cleaned up.
-    static func create(
+    public static func create(
         with config: CreationConfig,
         store: Store,
         providerRegistry: ProviderRegistry
@@ -199,10 +208,14 @@ actor SessionRuntime {
             store: store,
             gitService: gitService,
             decoder: ClaudeCodeDecoder(),
+            encoder: ClaudeCodeEncoder(),
             providerRegistry: providerRegistry
         )
 
         try await runtime.start()
+        // The opening prompt was previously never sent: creation launched the CLI and told it
+        // nothing. It goes through the same `send` as every later turn.
+        try await runtime.send(config.prompt)
 
         return runtime
     }
@@ -211,61 +224,125 @@ actor SessionRuntime {
 
     /// Reopens a persisted session.
     ///
-    /// C4 (resume) is currently deferred: only basic session reopening is implemented.
-    /// TODO: Wire `--resume <session_id>` through ProviderDescriptor launch arguments.
-    static func resume(
+    /// When the provider reported its own session id — `system/init` carries it, and it is persisted
+    /// the moment it arrives — the CLI is relaunched with `--resume <id>` and keeps its memory of the
+    /// conversation. When it did not, the session comes back read-only: the transcript is intact and
+    /// readable, but the agent is not resumed, because handing a provider an id it never issued is
+    /// how you get a confidently wrong session rather than an honest empty one.
+    public static func resume(
         sessionID: UUID,
         store: Store,
         providerRegistry: ProviderRegistry
     ) async throws -> SessionRuntime {
-        let runtime = try await MainActor.run {
-            let session = try store.fetchSession(id: sessionID)
-                ?? { throw CreationError.persistenceError("Session not found") }()
-
-            let repoURL = URL(fileURLWithPath: session.worktreePath)
-                .deletingLastPathComponent()  // .worktrees
-                .deletingLastPathComponent()  // repo root
-
-            let gitService: GitService
-            do {
-                gitService = try GitService(repositoryPath: repoURL)
-            } catch {
-                throw CreationError.gitError(String(describing: error))
-            }
-
-
-            // Dummy process for now; actual resume requires provider support
-            let dummyProcess = AgentProcess(
-                configuration: AgentProcess.Configuration(
-                    executable: URL(fileURLWithPath: "/dev/null"),
-                    arguments: [],
-                    environment: [:],
-                    workingDirectory: URL(fileURLWithPath: session.worktreePath)
-                )
-            )
-
-            let runtime = SessionRuntime(
-                sessionID: session.id,
-                process: dummyProcess,
-                store: store,
-                gitService: gitService,
-                decoder: ClaudeCodeDecoder(),
-                providerRegistry: providerRegistry
-            )
-
-            return runtime
+        struct Restored: Sendable {
+            let worktree: URL
+            let repositoryRoot: URL
+            let providerSessionID: String?
+            let provider: String
         }
 
-        // Yield history and finish
-        Task { await runtime.yieldHistoryAndFinish() }
+        let restored: Restored = try await MainActor.run {
+            guard let session = try store.fetchSession(id: sessionID) else {
+                throw CreationError.persistenceError("Session not found")
+            }
+            let worktree = URL(fileURLWithPath: session.worktreePath)
+            return Restored(
+                worktree: worktree,
+                repositoryRoot: worktree.deletingLastPathComponent().deletingLastPathComponent(),
+                providerSessionID: session.providerSessionId,
+                provider: session.provider
+            )
+        }
 
+        let gitService: GitService
+        do {
+            gitService = try GitService(repositoryPath: restored.repositoryRoot)
+        } catch {
+            throw CreationError.gitError(String(describing: error))
+        }
+
+        // Only Claude Code has a resume flag verified against the real CLI. Anything else stays
+        // read-only rather than being launched with a guessed argument.
+        let descriptor: ProviderDescriptor? = restored.provider == ProviderDescriptor.claude.id
+            || restored.provider == ProviderDescriptor.claude.displayName
+            ? ProviderDescriptor.claude
+            : nil
+
+        guard let descriptor, let providerSessionID = restored.providerSessionID else {
+            return try await readOnly(
+                sessionID: sessionID,
+                worktree: restored.worktree,
+                store: store,
+                gitService: gitService,
+                providerRegistry: providerRegistry
+            )
+        }
+
+        let configuration: AgentProcess.Configuration
+        do {
+            configuration = try providerRegistry.configuration(
+                for: descriptor,
+                workingDirectory: restored.worktree,
+                extraArguments: ["--resume", providerSessionID]
+            )
+        } catch {
+            throw CreationError.providerError(String(describing: error))
+        }
+
+        let runtime = SessionRuntime(
+            sessionID: sessionID,
+            process: AgentProcess(configuration: configuration),
+            store: store,
+            gitService: gitService,
+            decoder: ClaudeCodeDecoder(),
+            encoder: ClaudeCodeEncoder(),
+            providerRegistry: providerRegistry
+        )
+        try await runtime.start()
         return runtime
+    }
+
+    /// A session reopened for reading only, because no resume was possible.
+    ///
+    /// It holds no live process, so `send` throws rather than appearing to work.
+    private static func readOnly(
+        sessionID: UUID,
+        worktree: URL,
+        store: Store,
+        gitService: GitService,
+        providerRegistry: ProviderRegistry
+    ) async throws -> SessionRuntime {
+        let idle = AgentProcess(
+            configuration: AgentProcess.Configuration(
+                executable: URL(fileURLWithPath: "/usr/bin/true"),
+                arguments: [],
+                environment: [:],
+                workingDirectory: worktree
+            )
+        )
+        let runtime = SessionRuntime(
+            sessionID: sessionID,
+            process: idle,
+            store: store,
+            gitService: gitService,
+            decoder: ClaudeCodeDecoder(),
+            encoder: ClaudeCodeEncoder(),
+            providerRegistry: providerRegistry
+        )
+        await runtime.markReadOnly()
+        return runtime
+    }
+
+    /// Marks a reopened session as finished: the history is there, the agent is not.
+    private func markReadOnly() {
+        currentState = .finished
+        transcriptContinuation.finish()
     }
 
     // MARK: - Public Interface
 
     /// The session's current state.
-    var state: SessionState {
+    public var state: SessionState {
         currentState
     }
 
@@ -276,7 +353,7 @@ actor SessionRuntime {
     /// It starts the process on purpose: an earlier version only consumed `process.output`, so a
     /// caller that built a runtime directly waited forever on a subprocess nobody had launched.
     /// A `start()` that does not start is a trap.
-    func start() async throws {
+    public func start() async throws {
         if await !process.isRunning {
             try await process.start()
         }
@@ -289,8 +366,36 @@ actor SessionRuntime {
         }
     }
 
+    /// Sends a turn.
+    ///
+    /// The single path a prompt takes, opening or follow-up. Two paths drift, and then the second
+    /// message is formatted differently from the first for reasons nobody remembers.
+    public func send(_ text: String) async throws {
+        guard await process.isRunning else { throw CreationError.providerError("session is not running") }
+        for record in try encoder.encodePrompt(text) {
+            try await process.send(record)
+        }
+        currentState = .running
+    }
+
+    /// Cancels the turn in progress, leaving the session alive.
+    ///
+    /// Providers with an in-band cancel get one, because it tells the agent why it stopped. The rest
+    /// fall back to SIGINT — see `AgentProcess.interrupt()` for why that is not SIGTERM.
+    public func cancelTurn() async {
+        // `encodeCancel` returns nil when the protocol has no cancel record — Claude Code's does
+        // not — and the double optional here is that nil versus an encoding failure.
+        if let records = (try? encoder.encodeCancel()) ?? nil, !records.isEmpty {
+            for record in records {
+                try? await process.send(record)
+            }
+        } else {
+            await process.interrupt()
+        }
+    }
+
     /// Waits for the session to finish. For tests and for orderly shutdown.
-    func waitUntilFinished() async {
+    public func waitUntilFinished() async {
         await consumeTask?.value
     }
 

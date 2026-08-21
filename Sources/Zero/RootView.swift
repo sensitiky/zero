@@ -6,7 +6,9 @@ import ZeroCore
 /// is it costing.
 struct RootView: View {
     @Bindable var model: AppModel
+    @Bindable var coordinator: SessionCoordinator
     @Environment(\.colorScheme) private var scheme
+    @State private var showingNewSession = false
 
     var body: some View {
         NavigationSplitView {
@@ -14,7 +16,7 @@ struct RootView: View {
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 340)
         } detail: {
             HStack(spacing: 0) {
-                ConversationPane(model: model)
+                ConversationPane(model: model, coordinator: coordinator)
                 if model.inspectorVisible, model.selectedSession != nil {
                     Divider()
                     InspectorPane(model: model)
@@ -23,7 +25,32 @@ struct RootView: View {
             }
         }
         .zeroSurface(scheme)
+        .sheet(isPresented: $showingNewSession) {
+            NewSessionSheet(coordinator: coordinator)
+        }
+        .alert(
+            "Something went wrong",
+            isPresented: .init(
+                get: { coordinator.lastError != nil },
+                set: { if !$0 { coordinator.lastError = nil } }
+            )
+        ) {
+            Button("OK") { coordinator.lastError = nil }
+        } message: {
+            // Shown verbatim: a provider that will not start says why, and paraphrasing that into
+            // "an error occurred" throws away the only thing that helps.
+            Text(coordinator.lastError ?? "")
+        }
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    showingNewSession = true
+                } label: {
+                    Label("New Session", systemImage: "plus")
+                }
+                .keyboardShortcut("n", modifiers: .command)
+                .help("Start a session in its own worktree")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     model.inspectorVisible.toggle()

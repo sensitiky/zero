@@ -9,13 +9,13 @@ import SwiftData
 /// becomes a real constraint later, that's a signal to reconsider the architecture, not to hide it
 /// behind a protocol or an actor that pretends the problem went away.
 @MainActor
-final class Store {
+public final class Store {
 
     /// Records the id the provider assigned to this session.
     ///
     /// Resume depends on handing this exact value back to the provider, so it is written as soon as
     /// the provider reports it rather than at the end of a turn that may never finish cleanly.
-    func recordProviderSessionID(_ id: String, for session: Session) throws {
+    public func recordProviderSessionID(_ id: String, for session: Session) throws {
         guard session.providerSessionId != id else { return }
         session.providerSessionId = id
         try flush()
@@ -37,7 +37,7 @@ final class Store {
 
     /// Initialize with a ModelContainer.
     /// Pass nil to use an in-memory container (useful for testing).
-    init(modelContainer: ModelContainer? = nil) throws {
+    public init(modelContainer: ModelContainer? = nil) throws {
         if let modelContainer = modelContainer {
             // Retained even when injected: the context holds no strong reference back, so dropping
             // the container here leaves `context` pointing at a deallocated store.
@@ -63,7 +63,7 @@ final class Store {
 
     // MARK: - Repository
 
-    func createRepository(path: String, name: String, defaultBranch: String) throws -> Repository {
+    public func createRepository(path: String, name: String, defaultBranch: String) throws -> Repository {
         let repo = Repository(path: path, name: name, defaultBranch: defaultBranch)
         context.insert(repo)
         try context.save()
@@ -72,7 +72,7 @@ final class Store {
 
     // MARK: - Session
 
-    func createSession(
+    public func createSession(
         repository: Repository?,
         provider: String,
         model: String,
@@ -93,37 +93,37 @@ final class Store {
         return session
     }
 
-    func updateSessionState(_ session: Session, state: String) throws {
+    public func updateSessionState(_ session: Session, state: String) throws {
         session.state = state
         try context.save()
     }
 
-    func updateSessionError(_ session: Session, message: String) throws {
+    public func updateSessionError(_ session: Session, message: String) throws {
         session.state = "error"
         session.errorMessage = message
         try context.save()
     }
 
-    func markSessionStarted(_ session: Session) throws {
+    public func markSessionStarted(_ session: Session) throws {
         session.state = "running"
         session.startedAt = Date()
         try context.save()
     }
 
-    func markSessionFinished(_ session: Session, state: String = "finished") throws {
+    public func markSessionFinished(_ session: Session, state: String = "finished") throws {
         session.state = state
         session.endedAt = Date()
         try context.save()
     }
 
-    func listSessions() throws -> [Session] {
+    public func listSessions() throws -> [Session] {
         let descriptor = FetchDescriptor<Session>(
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
         return try context.fetch(descriptor)
     }
 
-    func fetchSession(id: UUID) throws -> Session? {
+    public func fetchSession(id: UUID) throws -> Session? {
         var descriptor = FetchDescriptor<Session>(
             predicate: #Predicate { $0.id == id }
         )
@@ -136,7 +136,7 @@ final class Store {
 
     /// Append a message to a session.
     /// Assigns the next sequence number automatically.
-    func appendMessage(
+    public func appendMessage(
         to session: Session,
         role: String,
         content: String
@@ -156,7 +156,7 @@ final class Store {
     // MARK: - ToolCall
 
     /// Append a tool call to a message.
-    func appendToolCall(
+    public func appendToolCall(
         to message: Message,
         id: String,
         name: String,
@@ -177,7 +177,7 @@ final class Store {
     }
 
     /// Update a tool call's output and status.
-    func updateToolCall(
+    public func updateToolCall(
         _ toolCall: ToolCallRecord,
         output: String?,
         status: String,
@@ -190,7 +190,7 @@ final class Store {
     }
 
     /// Update tool call with file edit details.
-    func updateToolCallEdit(
+    public func updateToolCallEdit(
         _ toolCall: ToolCallRecord,
         path: String,
         oldText: String?,
@@ -203,7 +203,7 @@ final class Store {
     }
 
     /// Update tool call timing.
-    func updateToolCallTiming(
+    public func updateToolCallTiming(
         _ toolCall: ToolCallRecord,
         startedAt: Date?,
         endedAt: Date?
@@ -217,7 +217,7 @@ final class Store {
 
     /// Append a usage record to a session.
     /// Assigns the next sequence number automatically.
-    func appendUsageRecord(
+    public func appendUsageRecord(
         to session: Session,
         model: String?,
         inputTokens: Int?,
@@ -247,7 +247,7 @@ final class Store {
     // MARK: - PermissionRequest
 
     /// Create a permission request for a session.
-    func createPermissionRequest(
+    public func createPermissionRequest(
         id: String,
         session: Session,
         toolCall: ToolCallRecord?,
@@ -271,7 +271,7 @@ final class Store {
 
     /// Resolve a permission request.
     /// Persists the resolution, the origin (userAction or rule name), and the timestamp.
-    func resolvePermissionRequest(
+    public func resolvePermissionRequest(
         _ request: PermissionRequestRecord,
         resolution: String,
         source: String, // "userAction" or "userConfiguredRule:{name}"
@@ -284,7 +284,7 @@ final class Store {
         try context.save()
     }
 
-    func fetchPermissionRequest(id: String) throws -> PermissionRequestRecord? {
+    public func fetchPermissionRequest(id: String) throws -> PermissionRequestRecord? {
         var descriptor = FetchDescriptor<PermissionRequestRecord>(
             predicate: #Predicate { $0.id == id }
         )
@@ -296,7 +296,7 @@ final class Store {
     // MARK: - PricingEntry
 
     /// Upsert a pricing entry (find by provider+model, update or create).
-    func setPricingEntry(
+    public func setPricingEntry(
         provider: String,
         model: String,
         inputPrice: Double?,
@@ -334,7 +334,7 @@ final class Store {
 
     /// Fetch pricing for a provider+model pair.
     /// Returns nil if not found. Distinguishable from zero price.
-    func fetchPricingEntry(provider: String, model: String) throws -> PricingEntry? {
+    public func fetchPricingEntry(provider: String, model: String) throws -> PricingEntry? {
         let predicate = #Predicate<PricingEntry> { $0.provider == provider && $0.model == model }
         var descriptor = FetchDescriptor<PricingEntry>(predicate: predicate)
         descriptor.includePendingChanges = true
