@@ -52,8 +52,10 @@ public struct ClaudeCodeEncoder: ProtocolEncoder {
     }
 
     public mutating func encodeCancel() throws -> [Data]? {
-        // Claude Code has no in-band cancel. The stream-json format has no cancel record type.
-        // Callers must signal cancellation through process termination (SIGTERM/SIGKILL).
+        // Claude Code has no cancel record in stream-json, so the caller must fall back to
+        // `AgentProcess.interrupt()` — SIGINT, which ends the turn. Not SIGTERM or SIGKILL: those
+        // tear down the process tree and lose the session, which is a different operation than
+        // cancelling a turn.
         return nil
     }
 }

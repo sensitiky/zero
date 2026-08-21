@@ -110,6 +110,18 @@ public actor AgentProcess {
         try stdinPipe.fileHandleForWriting.write(contentsOf: payload)
     }
 
+    /// Interrupts the turn in progress without ending the session.
+    ///
+    /// SIGINT, not SIGTERM. Claude Code's documented behavior is that SIGTERM terminates the whole
+    /// process tree and exits 143 — that ends the session and loses the conversation — while SIGINT
+    /// ends the turn in flight. This is the fallback for providers whose protocol has no cancel
+    /// record; Codex (`turn/interrupt`) and ACP (`session/cancel`) should be cancelled in band
+    /// instead, because an in-band cancel tells the agent why it stopped.
+    public func interrupt() {
+        guard running else { return }
+        process.interrupt()
+    }
+
     /// Ends the conversation politely: providers exit once stdin closes.
     public func closeInput() {
         try? stdinPipe.fileHandleForWriting.close()
