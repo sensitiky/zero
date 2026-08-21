@@ -108,10 +108,23 @@ enum PreviewData {
             )
         ))
 
+        // Markdown-flavored on purpose: bold, inline code, a fenced block with a language tag, and
+        // a heading — the shapes `MarkdownBody` renders, so the preview shows the rendering path
+        // and not just a plain-text stand-in for it.
         session.transcript.apply(.textDelta(
-            "Tests pass. The limiter allows 100 requests per client per minute and returns 429 once "
-                + "the bucket is empty; it resets on a rolling window rather than a hard reset at the "
-                + "minute boundary, so a client can't burst right at the edge of two windows."
+            "Tests pass. The limiter uses `TokenBucket` and is checked in `RateLimiter."
+                + "allow(clientID:)` **before** the handler does any decoding work, so a client "
+                + "over the limit never even pays for a JSON parse.\n\n"
+                + "## What changed\n\n"
+                + "```swift\n"
+                + "guard rateLimiter.allow(clientID: request.clientID) else {\n"
+                + "    return Response(status: .tooManyRequests)\n"
+                + "}\n"
+                + "```\n\n"
+                + "It resets on a rolling window rather than a hard reset at the minute boundary, "
+                + "so a client can't burst right at the edge of two windows. See "
+                + "[the RFC this follows](https://datatracker.ietf.org/doc/html/rfc6585) for the "
+                + "429 semantics."
         ))
 
         session.transcript.apply(.usage(Usage(

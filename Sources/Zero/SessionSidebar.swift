@@ -172,10 +172,10 @@ struct SessionRow: View {
         HStack(spacing: 8) {
             StateDot(state: session.state, awaiting: session.pendingPermission != nil)
             VStack(alignment: .leading, spacing: 1) {
-                Text(session.title).lineLimit(1)
+                MarkdownText(text: session.title).lineLimit(1)
                 if !session.summary.isEmpty {
                     // Dimmer, and never dimmer than 70%: below that it stops clearing WCAG AAA.
-                    Text(session.summary)
+                    MarkdownText(text: session.summary)
                         .font(.caption)
                         .foregroundStyle(
                             Theme.foreground(scheme).opacity(Theme.secondaryOpacity)

@@ -40,8 +40,7 @@ struct TranscriptView: View {
         case .userText(_, let text):
             UserMessage(text: text)
         case .assistantText(_, let text):
-            Text(text)
-                .textSelection(.enabled)
+            MarkdownBody(text: text)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .thinking(_, let text):
             ThinkingBlock(text: text)
@@ -66,9 +65,8 @@ struct ThinkingBlock: View {
 
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {
-            Text(text)
+            MarkdownBody(text: text)
                 .font(.callout)
-                .textSelection(.enabled)
                 .foregroundStyle(Theme.foreground(scheme).opacity(Theme.secondaryOpacity))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 4)
@@ -121,8 +119,7 @@ struct UserMessage: View {
     var body: some View {
         HStack {
             Spacer(minLength: 48)
-            Text(text)
-                .textSelection(.enabled)
+            MarkdownBody(text: text)
                 .multilineTextAlignment(.leading)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
