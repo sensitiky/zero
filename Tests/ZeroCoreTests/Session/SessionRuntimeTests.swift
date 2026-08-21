@@ -4,6 +4,27 @@ import SwiftData
 
 @testable import ZeroCore
 
+/// Spy decoder that records whether decode(line:) runs on the main thread.
+struct ThreadTrackingDecoder: ProtocolDecoder {
+    private let lock = NSLock()
+    private var decodeThreads: [Bool] = []
+    private var realDecoder = ClaudeCodeDecoder()
+
+    mutating func decode(line: Data) -> [AgentEvent] {
+        let isMain = Thread.isMainThread
+        lock.lock()
+        decodeThreads.append(isMain)
+        lock.unlock()
+        return realDecoder.decode(line: line)
+    }
+
+    var recordedThreads: [Bool] {
+        lock.lock()
+        defer { lock.unlock() }
+        return decodeThreads
+    }
+}
+
 @Suite("SessionRuntime")
 @MainActor
 struct SessionRuntimeTests {
@@ -294,6 +315,26 @@ struct SessionRuntimeTests {
 
         // Provider session id should be present for resumption
         #expect(fetched?.providerSessionId == "provider-session-abc")
+    }
+
+    // MARK: - Threading Tests
+
+    @Test("decoding mechanism can track which thread decode runs on")
+    func threadTrackingDecoderWorks() throws {
+        let lines = try fixtureData(named: "text-turn")
+        var spy = ThreadTrackingDecoder()
+
+        for line in lines {
+            _ = spy.decode(line: line)
+        }
+
+        // Verify the spy recorded decode calls
+        let recordedCalls = spy.recordedThreads
+        #expect(!recordedCalls.isEmpty, "Spy should have recorded decode calls")
+
+        // This test runs on main thread, so all calls here are true
+        // When integrated into SessionRuntime (which is an actor), they should all be false
+        #expect(recordedCalls.allSatisfy { $0 }, "Test runs on main thread, so all should be true")
     }
 
     // MARK: - Helpers

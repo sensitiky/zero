@@ -3,11 +3,9 @@ import SwiftData
 
 /// Manages a single agent session: creation, event processing, persistence, and resumption.
 ///
-/// The runtime orchestrates provider resolution, worktree lifecycle, event decoding, and
-/// transcript persistence. All I/O to the store happens on the main actor; the runtime
-/// batches persistence operations to avoid the 27.6 ms/record cost of per-event saves.
-@MainActor
-final class SessionRuntime {
+/// The runtime is a plain actor (not @MainActor), so NDJSON parsing and decoding happen on
+/// its own thread, avoiding main-thread stutter. Only batched persistence hops to the main actor.
+actor SessionRuntime {
     /// Configuration for creating a new session.
     struct CreationConfig: Sendable {
         var repository: URL  // path to the git repository
@@ -60,7 +58,8 @@ final class SessionRuntime {
         }
     }
 
-    private let session: Session
+    // Session is MainActor-confined; we only store its ID for safe cross-actor use.
+    private let sessionID: UUID
     private let process: AgentProcess
     private let store: Store
     private let gitService: GitService
@@ -68,8 +67,6 @@ final class SessionRuntime {
     private let providerRegistry: ProviderRegistry
 
     private var currentState: SessionState = .idle
-    private var pendingMessage: Message?  // accumulates text deltas
-    private var pendingToolCalls: [String: (message: Message, record: ToolCallRecord)] = [:]
     private var lastFlush = Date()
     private let flushDebounceInterval: TimeInterval = 0.5
 
@@ -80,14 +77,14 @@ final class SessionRuntime {
     // MARK: - Initialization
 
     init(
-        session: Session,
+        sessionID: UUID,
         process: AgentProcess,
         store: Store,
         gitService: GitService,
         decoder: ClaudeCodeDecoder,
         providerRegistry: ProviderRegistry
     ) {
-        self.session = session
+        self.sessionID = sessionID
         self.process = process
         self.store = store
         self.gitService = gitService
@@ -170,7 +167,7 @@ final class SessionRuntime {
         }
 
         // Do all session creation and runtime setup on MainActor
-        let runtime = try await MainActor.run {
+        let sessionID = try await MainActor.run {
             // Create the session
             let session = try store.createSession(
                 repository: nil,  // repository relationship optional for now
@@ -181,27 +178,23 @@ final class SessionRuntime {
                 providerSessionId: config.resumeSessionId
             )
 
-            // Create the runtime with the session
-            let runtime = SessionRuntime(
-                session: session,
-                process: process,
-                store: store,
-                gitService: gitService,
-                decoder: ClaudeCodeDecoder(),
-                providerRegistry: providerRegistry
-            )
-
             // Mark session as started
             try store.markSessionStarted(session)
-            runtime.currentState = .running
-
-            return runtime
+            return session.id
         }
 
-        // Spawn background task to consume process output
-        Task {
-            await runtime.consumeProcessOutput()
-        }
+        // Create the runtime with only the session ID
+        let runtime = SessionRuntime(
+            sessionID: sessionID,
+            process: process,
+            store: store,
+            gitService: gitService,
+            decoder: ClaudeCodeDecoder(),
+            providerRegistry: providerRegistry
+        )
+
+        // Start processing in the runtime's actor context
+        await runtime.start()
 
         return runtime
     }
@@ -210,24 +203,13 @@ final class SessionRuntime {
 
     /// Reopens a persisted session.
     ///
-    /// If the provider has a resume mechanism (identified by a `providerSessionId`),
-    /// a fresh process starts with the resume token. Otherwise, the session opens
-    /// read-only: history is visible, but new turns cannot be started.
-    ///
-    /// - Parameters:
-    ///   - sessionID: The persisted session ID to resume.
-    ///   - store: The persistence store.
-    ///   - providerRegistry: Provider resolver.
-    /// - Returns: A runtime with the session's history and, if possible, a fresh process.
+    /// C4 (resume) is currently deferred: only basic session reopening is implemented.
+    /// TODO: Wire `--resume <session_id>` through ProviderDescriptor launch arguments.
     static func resume(
         sessionID: UUID,
         store: Store,
         providerRegistry: ProviderRegistry
     ) async throws -> SessionRuntime {
-        // ponytail: simplified resume: no history streaming yet, just session reopen.
-        // The session's orderedMessages are available to callers; a fresh turn can only
-        // proceed if the provider supports resume via sessionId.
-
         let runtime = try await MainActor.run {
             let session = try store.fetchSession(id: sessionID)
                 ?? { throw CreationError.persistenceError("Session not found") }()
@@ -243,25 +225,9 @@ final class SessionRuntime {
                 throw CreationError.gitError(String(describing: error))
             }
 
-            let provider = ProviderDescriptor.claude  // ponytail: hard-coded for now
+            let provider = ProviderDescriptor.claude  // TODO: generalize provider selection
 
-            // If the session has a providerSessionId, try to resume the process
-            let process: AgentProcess?
-            if let resumeID = session.providerSessionId {
-                do {
-                    let processConfig = try providerRegistry.configuration(
-                        for: provider,
-                        workingDirectory: URL(fileURLWithPath: session.worktreePath)
-                    )
-                    // ponytail: no per-provider resume logic yet; Claude Code uses --resume <id>
-                    process = nil  // for now
-                } catch {
-                    process = nil
-                }
-            } else {
-                process = nil
-            }
-
+            // Dummy process for now; actual resume requires provider support
             let dummyProcess = AgentProcess(
                 configuration: AgentProcess.Configuration(
                     executable: URL(fileURLWithPath: "/dev/null"),
@@ -272,8 +238,8 @@ final class SessionRuntime {
             )
 
             let runtime = SessionRuntime(
-                session: session,
-                process: process ?? dummyProcess,
+                sessionID: session.id,
+                process: dummyProcess,
                 store: store,
                 gitService: gitService,
                 decoder: ClaudeCodeDecoder(),
@@ -283,31 +249,29 @@ final class SessionRuntime {
             return runtime
         }
 
-        // Start consuming output or finish with history
-        Task {
-            // Determine if we need to consume process output or just finish
-            // ponytail: this is deferred; check for a real process vs dummy
-            await runtime.yieldHistoryAndFinish()
-        }
+        // Yield history and finish
+        Task { await runtime.yieldHistoryAndFinish() }
 
         return runtime
     }
 
     // MARK: - Public Interface
 
-    /// The transcript: a stream of normalized events from the session.
-    var events: AsyncStream<AgentEvent> {
-        transcript
-    }
-
     /// The session's current state.
     var state: SessionState {
         currentState
     }
 
+    /// Starts the runtime: sets state to running and begins consuming output.
+    func start() async {
+        currentState = .running
+        await consumeProcessOutput()
+    }
+
     // MARK: - Event Processing
 
-    /// Consumes the process output stream, decodes events, persists them, and yields to callers.
+    /// Consumes the process output stream, decodes events on the actor thread, and yields to callers.
+    /// This method runs on the runtime's own actor, NOT the main thread.
     private func consumeProcessOutput() async {
         var pendingEvents: [AgentEvent] = []
         var lastFlushTime = Date()
@@ -315,7 +279,7 @@ final class SessionRuntime {
         for await output in process.output {
             switch output {
             case .record(let data):
-                // Decode the record
+                // Decode happens HERE, on the runtime's actor thread, not main
                 let events = decoder.decode(line: data)
 
                 for event in events {
@@ -329,7 +293,7 @@ final class SessionRuntime {
                     switch event {
                     case .turnEnded:
                         // Turn boundary: flush immediately
-                        persistAndFlush(pendingEvents)
+                        await persistAndFlush(pendingEvents)
                         pendingEvents.removeAll()
                         lastFlushTime = Date()
                         currentState = .running  // ready for next turn
@@ -347,7 +311,7 @@ final class SessionRuntime {
 
                 // Debounce flush: every 0.5s or on turn boundary
                 if Date().timeIntervalSince(lastFlushTime) > flushDebounceInterval && !pendingEvents.isEmpty {
-                    persistAndFlush(pendingEvents)
+                    await persistAndFlush(pendingEvents)
                     pendingEvents.removeAll()
                     lastFlushTime = Date()
                 }
@@ -359,17 +323,25 @@ final class SessionRuntime {
             case .exited(let code, let reason):
                 // Flush any pending events
                 if !pendingEvents.isEmpty {
-                    persistAndFlush(pendingEvents)
+                    await persistAndFlush(pendingEvents)
                 }
 
                 // Mark session as error if it didn't finish cleanly
                 if currentState == .running || currentState == .waitingPermission {
                     let errorMsg = "Process exited with code \(code)"
                     currentState = .error(errorMsg)
-                    try? store.updateSessionError(session, message: errorMsg)
+                    await MainActor.run {
+                        if let session = try? store.fetchSession(id: sessionID) {
+                            try? store.updateSessionError(session, message: errorMsg)
+                        }
+                    }
                 } else {
                     currentState = .finished
-                    try? store.markSessionFinished(session)
+                    await MainActor.run {
+                        if let session = try? store.fetchSession(id: sessionID) {
+                            try? store.markSessionFinished(session)
+                        }
+                    }
                 }
 
                 transcriptContinuation.finish()
@@ -378,7 +350,11 @@ final class SessionRuntime {
             case .streamFailure(let error):
                 // Stream error
                 currentState = .error(error)
-                try? store.updateSessionError(session, message: error)
+                await MainActor.run {
+                    if let session = try? store.fetchSession(id: sessionID) {
+                        try? store.updateSessionError(session, message: error)
+                    }
+                }
                 transcriptContinuation.finish()
                 return
             }
@@ -387,13 +363,6 @@ final class SessionRuntime {
 
     /// Yields the session's history and finishes the stream (for read-only resume).
     private func yieldHistoryAndFinish() async {
-        let messages = session.orderedMessages
-        for message in messages {
-            // Reconstruct events from persisted messages
-            // ponytail: simplified; a full implementation would reconstruct the entire turn
-            // For now, just signal the history is available.
-        }
-
         currentState = .finished
         transcriptContinuation.finish()
     }
@@ -401,151 +370,162 @@ final class SessionRuntime {
     // MARK: - Persistence
 
     /// Persists a batch of events to the store and flushes to disk.
-    /// All operations run on the MainActor (this actor is @MainActor).
-    /// This batching bounds the cost: Store.flush() is one 27.6ms call per batch, not per event.
-    private func persistAndFlush(_ events: [AgentEvent]) {
-        for event in events {
-            switch event {
-            case .textDelta(let text):
-                if pendingMessage == nil {
-                    pendingMessage = try? store.appendMessage(to: session, role: "assistant", content: text)
-                } else {
-                    pendingMessage?.content.append(text)
-                }
+    /// This is the ONLY place persistence happens, and it uses ONE MainActor.run hop
+    /// to fetch the session, do all appends, and call flush().
+    private func persistAndFlush(_ events: [AgentEvent]) async {
+        // All store operations in one MainActor hop
+        await MainActor.run {
+            // Fetch the session by ID (only reference within MainActor context)
+            guard let session = try? store.fetchSession(id: sessionID) else { return }
 
-            case .thinkingDelta:
-                // Internal; not persisted
-                break
+            var pendingMessage: Message?
+            var pendingToolCalls: [String: ToolCallRecord] = [:]
 
-            case .toolCall(let toolCall):
-                let message = pendingMessage ?? (try? store.appendMessage(
-                    to: session,
-                    role: "assistant",
-                    content: ""
-                ))
-                if let message = message {
-                    pendingMessage = message
-
-                    if let (_, record) = pendingToolCalls[toolCall.id] {
-                        // Update existing
-                        switch toolCall.status {
-                        case .pending:
-                            break
-                        case .running:
-                            record.status = "running"
-                        case .succeeded:
-                            record.output = toolCall.output
-                            record.status = "succeeded"
-                            record.endedAt = toolCall.endedAt
-                        case .failed(let detail):
-                            record.output = detail
-                            record.status = "failed"
-                            record.statusDetail = detail
-                            record.endedAt = toolCall.endedAt
-                        case .denied:
-                            record.status = "denied"
-                            record.endedAt = toolCall.endedAt
-                        }
-                        if let edit = toolCall.edit {
-                            record.editPath = edit.path
-                            record.editOldText = edit.oldText
-                            record.editNewText = edit.newText
-                        }
+            for event in events {
+                switch event {
+                case .textDelta(let text):
+                    if pendingMessage == nil {
+                        pendingMessage = try? store.appendMessage(to: session, role: "assistant", content: text)
                     } else {
-                        // New tool call
-                        if let record = try? store.appendToolCall(
-                            to: message,
-                            id: toolCall.id,
-                            name: toolCall.name,
-                            input: toolCall.input,
-                            status: statusString(toolCall.status)
-                        ) {
-                            if let edit = toolCall.edit {
-                                try? store.updateToolCallEdit(
-                                    record,
-                                    path: edit.path,
-                                    oldText: edit.oldText,
-                                    newText: edit.newText
-                                )
+                        pendingMessage?.content.append(text)
+                    }
+
+                case .thinkingDelta:
+                    // Internal; not persisted
+                    break
+
+                case .toolCall(let toolCall):
+                    var message = pendingMessage
+                    if message == nil {
+                        message = try? store.appendMessage(
+                            to: session,
+                            role: "assistant",
+                            content: ""
+                        )
+                    }
+                    if let message = message {
+                        pendingMessage = message
+
+                        if let existing = pendingToolCalls[toolCall.id] {
+                            // Update existing
+                            switch toolCall.status {
+                            case .pending:
+                                break
+                            case .running:
+                                existing.status = "running"
+                            case .succeeded:
+                                existing.output = toolCall.output
+                                existing.status = "succeeded"
+                                existing.endedAt = toolCall.endedAt
+                            case .failed(let detail):
+                                existing.output = detail
+                                existing.status = "failed"
+                                existing.statusDetail = detail
+                                existing.endedAt = toolCall.endedAt
+                            case .denied:
+                                existing.status = "denied"
+                                existing.endedAt = toolCall.endedAt
                             }
-                            pendingToolCalls[toolCall.id] = (message, record)
+                            if let edit = toolCall.edit {
+                                existing.editPath = edit.path
+                                existing.editOldText = edit.oldText
+                                existing.editNewText = edit.newText
+                            }
+                        } else {
+                            // New tool call
+                            let statusStr: String
+                            switch toolCall.status {
+                            case .pending: statusStr = "pending"
+                            case .running: statusStr = "running"
+                            case .succeeded: statusStr = "succeeded"
+                            case .failed: statusStr = "failed"
+                            case .denied: statusStr = "denied"
+                            }
+
+                            if let record = try? store.appendToolCall(
+                                to: message,
+                                id: toolCall.id,
+                                name: toolCall.name,
+                                input: toolCall.input,
+                                status: statusStr
+                            ) {
+                                if let edit = toolCall.edit {
+                                    try? store.updateToolCallEdit(
+                                        record,
+                                        path: edit.path,
+                                        oldText: edit.oldText,
+                                        newText: edit.newText
+                                    )
+                                }
+                                pendingToolCalls[toolCall.id] = record
+                            }
                         }
                     }
+
+                case .usage(let usage):
+                    _ = try? store.appendUsageRecord(
+                        to: session,
+                        model: usage.model,
+                        inputTokens: usage.inputTokens,
+                        outputTokens: usage.outputTokens,
+                        cacheReadTokens: usage.cacheReadTokens,
+                        cacheWriteTokens: usage.cacheWriteTokens,
+                        contextWindowUsed: usage.contextWindowUsed,
+                        contextWindowTotal: usage.contextWindowTotal
+                    )
+
+                case .thinkingProgress:
+                    // Running estimate; separate from usage
+                    break
+
+                case .permissionRequested(let request):
+                    let toolCall = pendingToolCalls.values.first
+                    let optionsJSON: String?
+                    do {
+                        let optionsArray = request.options.map { o -> [String: String] in
+                            let kindStr: String
+                            switch o.kind {
+                            case .allowOnce: kindStr = "allowOnce"
+                            case .allowAlways: kindStr = "allowAlways"
+                            case .denyOnce: kindStr = "denyOnce"
+                            case .denyAlways: kindStr = "denyAlways"
+                            }
+                            return ["id": o.id, "kind": kindStr, "label": o.label]
+                        }
+                        if let data = try? JSONSerialization.data(
+                            withJSONObject: optionsArray,
+                            options: [.sortedKeys]
+                        ) {
+                            optionsJSON = String(data: data, encoding: .utf8)
+                        } else {
+                            optionsJSON = nil
+                        }
+                    }
+                    _ = try? store.createPermissionRequest(
+                        id: request.id,
+                        session: session,
+                        toolCall: toolCall,
+                        toolName: request.toolName,
+                        detail: request.detail,
+                        optionsJSON: optionsJSON
+                    )
+
+                case .turnStarted:
+                    pendingMessage = nil
+                    pendingToolCalls.removeAll()
+
+                case .turnEnded:
+                    pendingMessage = nil
+                    pendingToolCalls.removeAll()
+
+                case .plan, .unrecognized, .failed:
+                    break
                 }
-
-            case .usage(let usage):
-                _ = try? store.appendUsageRecord(
-                    to: session,
-                    model: usage.model,
-                    inputTokens: usage.inputTokens,
-                    outputTokens: usage.outputTokens,
-                    cacheReadTokens: usage.cacheReadTokens,
-                    cacheWriteTokens: usage.cacheWriteTokens,
-                    contextWindowUsed: usage.contextWindowUsed,
-                    contextWindowTotal: usage.contextWindowTotal
-                )
-
-            case .thinkingProgress:
-                // Running estimate; separate from usage
-                break
-
-            case .permissionRequested(let request):
-                let toolCall = pendingToolCalls.values.first?.record
-                let optionsJSON: String?
-                if let data = try? JSONSerialization.data(
-                    withJSONObject: request.options.map { o in
-                        ["id": o.id, "kind": kindString(o.kind), "label": o.label]
-                    },
-                    options: [.sortedKeys]
-                ) {
-                    optionsJSON = String(data: data, encoding: .utf8)
-                } else {
-                    optionsJSON = nil
-                }
-                _ = try? store.createPermissionRequest(
-                    id: request.id,
-                    session: session,
-                    toolCall: toolCall,
-                    toolName: request.toolName,
-                    detail: request.detail,
-                    optionsJSON: optionsJSON
-                )
-
-            case .turnStarted:
-                pendingMessage = nil
-                pendingToolCalls.removeAll()
-
-            case .turnEnded:
-                pendingMessage = nil
-                pendingToolCalls.removeAll()
-
-            case .plan, .unrecognized, .failed:
-                break
             }
-        }
 
-        // Single flush for the batch
-        try? store.flush()
-    }
-
-    // MARK: - Helpers
-
-    private func statusString(_ status: ToolCall.Status) -> String {
-        switch status {
-        case .pending: return "pending"
-        case .running: return "running"
-        case .succeeded: return "succeeded"
-        case .failed: return "failed"
-        case .denied: return "denied"
+            // Single flush for the batch
+            try? store.flush()
         }
     }
 
-    private func kindString(_ kind: PermissionOption.Kind) -> String {
-        switch kind {
-        case .allowOnce: return "allowOnce"
-        case .allowAlways: return "allowAlways"
-        case .denyOnce: return "denyOnce"
-        case .denyAlways: return "denyAlways"
-        }
-    }
 }
