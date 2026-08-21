@@ -1,0 +1,6 @@
+interface:
+  display_name: "Incu Way Threat Model"
+  short_description: "Create focused STRIDE threat models"
+  default_prompt: "Use $incu-way-threat-model to threat-model this feature, service, API, or branch diff."
+policy:
+  allow_implicit_invocation: true

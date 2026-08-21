@@ -1,0 +1,94 @@
+# incu/security — the Incu security-remediation flow, as a member way of the incu/incu-way family.
+#
+# Driven by `skills/snyk-remediation` (declared at the family level — see /way.yaml and
+# ways/README.md "Layout"). Third distinct gate model in the family: it gates on the SCOPE of the
+# findings before any plan exists, then on the plan, the resolution, and each PR. Phase ids match
+# the `security` phase enum of the state contract
+# (ways/rulepacks/state-contract/rules/state-contract.md).
+#
+# Note: `.ways/state.json` persists the four post-isolation gates (`plan`, `resolution`,
+# `pr-develop`, `pr-main`). `scope` is the pre-isolation Gate 1 — it decides which findings are in
+# scope before a branch or worktree exists, so it is declared here but not tracked in state.
+#
+# Validate:  ways validate ways/incu-security/way.yaml  (run from the repo root)
+#            ways conformance ways/incu-security/way.yaml
+apiVersion: ways/v1alpha1
+kind: Way
+metadata:
+  name: incu/security
+  displayName: Incu Security Remediation
+  version: 1.0.0
+  description: Incu's security-remediation flow — scan → findings → scope gate → plan → fix per finding → re-scan → resolution → PRs.
+  discipline: security
+  publisher: incu
+
+spec:
+  # No `knowledge` here: the shared payload (state contract, security, branch-flow) is declared
+  # once by the family — a member does not restate it.
+
+  requires:
+    cli:
+      - name: git
+        check: git --version
+        required: true
+      - name: gh
+        check: gh --version
+        versionConstraint: '>=2.0.0'
+        install: 'brew install gh  (https://cli.github.com)'
+        required: true
+        capability: vcs-host
+
+  # This flow scans, so it needs sast + sca; it does not run the code-quality scan (that belongs
+  # to the feature/bug validation checklists). The family declares the same slot ids.
+  needs:
+    - id: vcs-host
+      displayName: Version-control host
+      description: Hosts the repo and PRs — where this way opens and gates the remediation pull requests.
+      contract: ways.dev/vcs-host@1
+      required: true
+      providerSource: environment
+      options: [github, gitlab, bitbucket]
+    - id: sast
+      displayName: Static application security testing
+      description: Produces the first-party code findings this flow triages, remediates and re-scans.
+      contract: ways.dev/sast@1
+      required: true
+      providerSource: environment
+      options: [snyk, semgrep]
+    - id: sca
+      displayName: Software composition analysis
+      description: Produces the dependency findings this flow triages, remediates and re-scans.
+      contract: ways.dev/sca@1
+      required: true
+      providerSource: environment
+      options: [snyk]
+
+  defaults:
+    bindings:
+      vcs-host: github
+      sast: snyk
+      sca: snyk
+
+  flow:
+    # `security` phases, per the state contract: scan → findings → plan → implementation →
+    # validation → pr-develop → pr-main → done.
+    phases:
+      - { id: scan, label: Intake & scan }
+      - { id: findings, label: Findings report }
+      - { id: plan, label: Remediation plan }
+      - { id: implementation, label: Fix per finding }
+      - { id: validation, label: Re-scan & resolution }
+      - { id: pr-develop, label: PR fix→develop }
+      - { id: pr-main, label: PR develop→main }
+      - { id: done, label: Done }
+    gates:
+      - { id: scope, label: Scope confirmation, afterPhase: findings, approval: user, enforcement: blocking }
+      - { id: plan, label: Plan approval, afterPhase: plan, approval: user, enforcement: blocking, dependsOn: [scope] }
+      - { id: resolution, label: Validation sign-off, afterPhase: validation, approval: user, enforcement: blocking, dependsOn: [plan] }
+      - { id: pr-develop, label: PR fix→develop, afterPhase: pr-develop, approval: user, enforcement: blocking, dependsOn: [resolution] }
+      - { id: pr-main, label: PR develop→main, afterPhase: pr-main, approval: user, enforcement: blocking, dependsOn: [pr-develop] }
+    generates:
+      - { name: FINDINGS.md, pathTemplate: 'docs/security/{slug}/FINDINGS.md', producedInPhase: findings, gate: scope, statusField: Status, required: true }
+      - { name: PLAN.md, pathTemplate: 'docs/security/{slug}/PLAN.md', producedInPhase: plan, gate: plan, statusField: Status, required: true }
+      - { name: RESOLUTION.md, pathTemplate: 'docs/security/{slug}/RESOLUTION.md', producedInPhase: validation, gate: resolution, statusField: Status, required: true }
+    state: .ways/state.json

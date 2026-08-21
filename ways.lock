@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "ways": {
+    "incu/dev": {
+      "source": "github:incu-tech/incuway",
+      "sha": "79d214ecc5356faca877b1b013eff9f003cd9774",
+      "version": "1.3.0",
+      "digest": "sha256:d461147e201103031bb08e2f79273a220050cb4d89bca7ef8847797a5dba5fd1",
+      "approvedDigest": "sha256:d461147e201103031bb08e2f79273a220050cb4d89bca7ef8847797a5dba5fd1",
+      "scope": "local",
+      "components": {
+        "rules": [
+          {
+            "name": "conventions.md",
+            "from": "rules/conventions.md"
+          }
+        ]
+      }
+    },
+    "incu/incu-way": {
+      "kind": "family",
+      "source": "github:incu-tech/incuway",
+      "sha": "79d214ecc5356faca877b1b013eff9f003cd9774",
+      "version": "2.0.0",
+      "digest": "sha256:a929ca688b86e83a9636365f9fb940b04173adb79b2a0f206608b6ecb1ab6b05",
+      "scope": "local",
+      "members": [
+        "incu/dev",
+        "incu/security"
+      ],
+      "components": {
+        "skills": [
+          {
+            "name": "incu-way-arch-assessment",
+            "from": "skills/incu-way-arch-assessment"
+          },
+          {
+            "name": "incu-way-bugs",
+            "from": "skills/incu-way-bugs"
+          },
+          {
+            "name": "incu-way-development",
+            "from": "skills/incu-way-development"
+          },
+          {
+            "name": "incu-way-docs",
+            "from": "skills/incu-way-docs"
+          },
+          {
+            "name": "incu-way-init",
+            "from": "skills/incu-way-init"
+          },
+          {
+            "name": "incu-way-po",
+            "from": "skills/incu-way-po"
+          },
+          {
+            "name": "incu-way-prepare-pr",
+            "from": "skills/incu-way-prepare-pr"
+          },
+          {
+            "name": "incu-way-security-validation",
+            "from": "skills/incu-way-security-validation"
+          },
+          {
+            "name": "incu-way-threat-model",
+            "from": "skills/incu-way-threat-model"
+          },
+          {
+            "name": "snyk-remediation",
+            "from": "skills/snyk-remediation"
+          }
+        ],
+        "rules": [
+          {
+            "name": "branch-flow.md",
+            "from": "ways/rulepacks/incu-base/rules/branch-flow.md"
+          },
+          {
+            "name": "security.md",
+            "from": "ways/rulepacks/incu-base/rules/security.md"
+          },
+          {
+            "name": "state-contract.md",
+            "from": "ways/rulepacks/state-contract/rules/state-contract.md"
+          }
+        ]
+      }
+    },
+    "incu/security": {
+      "source": "github:incu-tech/incuway",
+      "sha": "79d214ecc5356faca877b1b013eff9f003cd9774",
+      "version": "1.0.0",
+      "digest": "sha256:5005b3c257a12e72592822a4c51def21bfa9f56ce2b3d499d84040de66bfecd2",
+      "approvedDigest": "sha256:5005b3c257a12e72592822a4c51def21bfa9f56ce2b3d499d84040de66bfecd2",
+      "scope": "local"
+    }
+  },
+  "contracts": {
+    "ways.dev": {
+      "source": "github:incu-tech/ways-contracts",
+      "ref": "v1.0.0",
+      "sha": "d74b13c0538d0c5b843f50b0c2de22b123b3280f",
+      "version": "1.0.0",
+      "digest": "sha256:7979eb5ea1a9ad36d9a5877e5b8ec150a3aafa0a41ec967db20262b755d19ffd"
+    }
+  }
+}

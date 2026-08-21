@@ -1,0 +1,37 @@
+{
+  "version": 2,
+  "steering": {
+    "branch-flow": {
+      "name": "branch-flow",
+      "source": "incu-tech/incuway",
+      "steeringFilePath": "ways/rulepacks/incu-base/rules/branch-flow.md",
+      "steeringFileHash": "ab246ee51e693463361f10715c40316aad44f3eb",
+      "sourceFormat": "kiro",
+      "targetFormat": "claude-code"
+    },
+    "conventions": {
+      "name": "conventions",
+      "source": "incu-tech/incuway",
+      "steeringFilePath": "ways/incu-dev/rules/conventions.md",
+      "steeringFileHash": "525d77f1cfc384a6e1d1d34487cab625bd83e9fb",
+      "sourceFormat": "kiro",
+      "targetFormat": "claude-code"
+    },
+    "security": {
+      "name": "security",
+      "source": "incu-tech/incuway",
+      "steeringFilePath": "ways/rulepacks/incu-base/rules/security.md",
+      "steeringFileHash": "f6e4943764802feaddda34ee71b5398a9b58eb7a",
+      "sourceFormat": "kiro",
+      "targetFormat": "claude-code"
+    },
+    "state-contract": {
+      "name": "state-contract",
+      "source": "incu-tech/incuway",
+      "steeringFilePath": "ways/rulepacks/state-contract/rules/state-contract.md",
+      "steeringFileHash": "e52739e93954453b8d9e9028deb4e4f1d8fca10d",
+      "sourceFormat": "kiro",
+      "targetFormat": "claude-code"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Incu Way Init"
+  short_description: "Bootstrap Incu Way in a repository"
+  default_prompt: "Use $incu-way-init to initialize or refresh Incu Way for this repository."
+policy:
+  allow_implicit_invocation: true
