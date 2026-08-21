@@ -88,10 +88,32 @@ public actor AgentProcess {
             continuation.yield(.diagnostic(text))
         }
 
+        let stdoutHandle = stdoutPipe.fileHandleForReading
+        let stderrHandle = stderrPipe.fileHandleForReading
+
         process.terminationHandler = { process in
+            // Drain what is still in the pipes before finishing.
+            //
+            // `readabilityHandler` fires asynchronously, so a process that exits immediately — a
+            // CLI rejecting a flag, say — can terminate before the handler has read a single byte.
+            // Finishing the stream here without draining silently discarded that output, leaving
+            // callers with an exit code and no explanation of it.
+            stdoutHandle.readabilityHandler = nil
+            stderrHandle.readabilityHandler = nil
+
+            if let remaining = try? stdoutHandle.readToEnd(), !remaining.isEmpty {
+                if let records = try? reader.feed(remaining) {
+                    for record in records { continuation.yield(.record(record)) }
+                }
+            }
             if let trailing = reader.flush() {
                 continuation.yield(.record(trailing))
             }
+            if let remaining = try? stderrHandle.readToEnd(), !remaining.isEmpty,
+               let text = String(data: remaining, encoding: .utf8) {
+                continuation.yield(.diagnostic(text))
+            }
+
             continuation.yield(
                 .exited(code: process.terminationStatus, reason: process.terminationReason)
             )

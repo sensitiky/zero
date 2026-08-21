@@ -11,6 +11,16 @@ import SwiftData
 @MainActor
 final class Store {
 
+    /// Records the id the provider assigned to this session.
+    ///
+    /// Resume depends on handing this exact value back to the provider, so it is written as soon as
+    /// the provider reports it rather than at the end of a turn that may never finish cleanly.
+    func recordProviderSessionID(_ id: String, for session: Session) throws {
+        guard session.providerSessionId != id else { return }
+        session.providerSessionId = id
+        try flush()
+    }
+
     /// Writes pending appends to disk.
     ///
     /// Appends do not flush individually: a `save()` per record measured 27.6 ms at p50, which is

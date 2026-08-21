@@ -28,8 +28,12 @@ public struct ClaudeCodeDecoder: ProtocolDecoder {
         case "user":
             return decodeUser(json: json, raw: line)
         case "rate_limit_event":
-            // Rate limits don't fit AgentEvent; keep as unrecognized
-            return [.unrecognized(raw: line)]
+            guard let info = json["rate_limit_info"] as? [String: Any],
+                  let status = info["status"] as? String else {
+                return [.unrecognized(raw: line)]
+            }
+            let resets = (info["resetsAt"] as? Double).map { Date(timeIntervalSince1970: $0) }
+            return [.rateLimit(status: status, resetsAt: resets)]
         case "result":
             return decodeResult(json: json, raw: line)
         default:
@@ -46,16 +50,18 @@ public struct ClaudeCodeDecoder: ProtocolDecoder {
 
         switch subtype {
         case "init":
-            // Session init doesn't directly map to AgentEvent
-            return [.unrecognized(raw: raw)]
+            guard let sessionID = json["session_id"] as? String else {
+                return [.unrecognized(raw: raw)]
+            }
+            return [.sessionReady(providerSessionID: sessionID, model: json["model"] as? String)]
         case "thinking_tokens":
             return decodeThinkingTokens(json: json, raw: raw)
-        case "post_turn_summary":
-            // Summary doesn't fit AgentEvent
-            return [.unrecognized(raw: raw)]
-        case "task_summary":
-            // Task summary doesn't fit AgentEvent
-            return [.unrecognized(raw: raw)]
+        // Known and deliberately not surfaced. Returning no events rather than `.unrecognized`
+        // keeps that case meaning "we do not understand this record" — if it fills up with records
+        // we understand and chose to skip, a real gap stops being visible.
+        case "post_turn_summary", "task_summary", "hook_started", "hook_progress", "hook_response",
+             "plugin_install", "api_retry":
+            return []
         case "permission_denied":
             return decodePermissionDenied(json: json, raw: raw)
         default:

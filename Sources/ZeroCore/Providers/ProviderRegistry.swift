@@ -49,14 +49,30 @@ public final class ProviderRegistry: Sendable {
         resolveExecutable: ExecutableResolver? = nil,
         getVersion: VersionGetter? = nil
     ) {
-        self.candidateDirectories = candidateDirectories ?? [
-            URL(fileURLWithPath: "/usr/local/bin"),
-            URL(fileURLWithPath: "/opt/homebrew/bin"),
-            URL(fileURLWithPath: "/usr/bin"),
-            URL(fileURLWithPath: "/bin")
-        ]
+        self.candidateDirectories = candidateDirectories ?? Self.defaultCandidateDirectories()
         self.resolveExecutable = resolveExecutable ?? Self.defaultResolveExecutable
         self.getVersion = getVersion ?? Self.defaultGetVersion
+    }
+
+    /// Where provider CLIs actually get installed.
+    ///
+    /// An explicit list rather than the inherited `PATH`, because this decides which binary gets
+    /// launched. But the list has to match reality: the first version of it covered only the system
+    /// and Homebrew directories, and reported an installed `claude` as "not installed" because the
+    /// official installer puts it in `~/.local/bin`. A resolver that cannot find real installations
+    /// is not secure, just useless.
+    static func defaultCandidateDirectories() -> [URL] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return [
+            home.appendingPathComponent(".local/bin"),
+            home.appendingPathComponent(".claude/local"),
+            home.appendingPathComponent(".bun/bin"),
+            home.appendingPathComponent(".cargo/bin"),
+            URL(fileURLWithPath: "/opt/homebrew/bin"),
+            URL(fileURLWithPath: "/usr/local/bin"),
+            URL(fileURLWithPath: "/usr/bin"),
+            URL(fileURLWithPath: "/bin"),
+        ]
     }
 
     /// Returns the status of a provider: available, not installed, version mismatch, or error.
@@ -112,9 +128,15 @@ public final class ProviderRegistry: Sendable {
 
     /// Builds an `AgentProcess.Configuration` for the given descriptor, assuming it is available.
     /// The caller must verify the provider's status before calling this — it does no validation.
+    /// Builds a launch configuration.
+    ///
+    /// `extraArguments` is appended after the descriptor's own: per-session flags such as the
+    /// `--settings` blob that installs the permission hook, or `--resume <id>`, are not properties
+    /// of the provider and must not be baked into the descriptor.
     public func configuration(
         for descriptor: ProviderDescriptor,
-        workingDirectory: URL
+        workingDirectory: URL,
+        extraArguments: [String] = []
     ) throws -> AgentProcess.Configuration {
         guard let executableURL = try? resolveExecutable(
             descriptor.id,
@@ -125,7 +147,7 @@ public final class ProviderRegistry: Sendable {
 
         return AgentProcess.Configuration(
             executable: executableURL,
-            arguments: descriptor.launchArguments,
+            arguments: descriptor.launchArguments + extraArguments,
             environment: ProcessInfo.processInfo.environment,
             workingDirectory: workingDirectory
         )

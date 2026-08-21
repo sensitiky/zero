@@ -409,6 +409,15 @@ actor SessionRuntime {
 
             for event in events {
                 switch event {
+                case .sessionReady(let providerSessionID, _):
+                    // Written immediately: resume needs this id, and a turn that crashes must not
+                    // take it with it.
+                    try? store.recordProviderSessionID(providerSessionID, for: session)
+
+                case .rateLimit:
+                    // Surfaced on the transcript for the UI; nothing to persist.
+                    break
+
                 case .textDelta(let text):
                     if pendingMessage == nil {
                         pendingMessage = try? store.appendMessage(to: session, role: "assistant", content: text)

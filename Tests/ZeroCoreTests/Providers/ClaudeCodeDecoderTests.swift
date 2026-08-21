@@ -293,4 +293,57 @@ struct ClaudeCodeDecoderTests {
         }
         return try Data(contentsOf: URL(fileURLWithPath: path))
     }
+
+    // MARK: - Records added after the probe ran against the real CLI
+
+    @Test("system/init yields the provider session id that resume needs")
+    func initYieldsSessionReady() {
+        var decoder = ClaudeCodeDecoder()
+        let line = Data(#"{"type":"system","subtype":"init","session_id":"abc-123","model":"claude-haiku-4-5","cwd":"/tmp"}"#.utf8)
+        let events = decoder.decode(line: line)
+        guard case .sessionReady(let id, let model) = events.first else {
+            Issue.record("expected .sessionReady, got \(events)")
+            return
+        }
+        #expect(id == "abc-123")
+        #expect(model == "claude-haiku-4-5")
+    }
+
+    @Test("rate_limit_event decodes its status")
+    func rateLimitDecodes() {
+        var decoder = ClaudeCodeDecoder()
+        let line = Data(#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1787301000}}"#.utf8)
+        guard case .rateLimit(let status, let resetsAt) = decoder.decode(line: line).first else {
+            Issue.record("expected .rateLimit")
+            return
+        }
+        #expect(status == "allowed")
+        #expect(resetsAt == Date(timeIntervalSince1970: 1787301000))
+    }
+
+    @Test("records we know and skip are not reported as unrecognized")
+    func benignRecordsAreSilent() {
+        // `.unrecognized` has to keep meaning "we do not understand this". If it fills with hook
+        // chatter nobody reads it, and a genuine gap in the decoder stops being visible.
+        var decoder = ClaudeCodeDecoder()
+        let benign = [
+            #"{"type":"system","subtype":"hook_started","hook_name":"SessionStart"}"#,
+            #"{"type":"system","subtype":"hook_response","hook_name":"SessionStart","outcome":"success"}"#,
+            #"{"type":"system","subtype":"post_turn_summary","status_category":"review_ready"}"#,
+            #"{"type":"system","subtype":"task_summary"}"#,
+        ]
+        for record in benign {
+            #expect(decoder.decode(line: Data(record.utf8)).isEmpty, "\(record) should produce no events")
+        }
+    }
+
+    @Test("a system subtype we have never seen is still reported as unrecognized")
+    func unknownSubtypeStaysVisible() {
+        var decoder = ClaudeCodeDecoder()
+        let line = Data(#"{"type":"system","subtype":"something_new_in_a_future_version"}"#.utf8)
+        guard case .unrecognized = decoder.decode(line: line).first else {
+            Issue.record("an unknown subtype must stay visible")
+            return
+        }
+    }
 }

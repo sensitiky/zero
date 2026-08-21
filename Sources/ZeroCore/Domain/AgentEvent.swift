@@ -3,6 +3,12 @@ import Foundation
 /// What Zero knows how to show. Every provider protocol is decoded into this and nothing else,
 /// so no view, store or state machine in the app ever branches on which agent produced it.
 public enum AgentEvent: Sendable, Equatable {
+    /// The provider accepted the session and reported its own identity for it.
+    ///
+    /// Carries the id that resume needs: without it there is nothing to hand back to
+    /// `--resume`, which is why resume stayed blocked while this record was dropped.
+    case sessionReady(providerSessionID: String, model: String?)
+    case rateLimit(status: String, resetsAt: Date?)
     case turnStarted(id: String)
     case textDelta(String)
     case thinkingDelta(String)

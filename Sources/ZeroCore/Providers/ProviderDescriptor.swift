@@ -53,22 +53,27 @@ public struct ProviderDescriptor: Sendable {
     }
 
     // Built-in descriptors for the three standard providers.
-    static let claude = ProviderDescriptor(
+    public static let claude = ProviderDescriptor(
         id: "claude",
         displayName: "Claude Code",
         executableCandidates: ["claude"],
         versionCommand: ["--version"],
         minimumVersion: "2.0.0",
+        // Verified against 2.1.237. `--permission-prompt-tool` does NOT exist in this CLI and
+        // passing it makes the process exit immediately; permissions go through the PreToolUse hook
+        // instead (see PermissionBroker). `--print` is required for the non-interactive stream.
+        // `--include-partial-messages` is deliberately absent until the decoder handles
+        // `stream_event` records — see FR-18.
         launchArguments: [
+            "--print",
             "--output-format", "stream-json",
             "--input-format", "stream-json",
             "--verbose",
-            "--permission-prompt-tool", "stdio"
         ],
         requiresAuthentication: true
     )
 
-    static let codex = ProviderDescriptor(
+    public static let codex = ProviderDescriptor(
         id: "codex",
         displayName: "Codex",
         executableCandidates: ["codex"],

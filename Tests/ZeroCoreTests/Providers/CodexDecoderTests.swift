@@ -470,6 +470,10 @@ private func eventKind(_ event: AgentEvent) -> String {
         return "plan"
     case .thinkingProgress:
         return "thinkingProgress"
+    case .sessionReady:
+        return "sessionReady"
+    case .rateLimit:
+        return "rateLimit"
     case .permissionRequested:
         return "permissionRequested"
     case .usage:
