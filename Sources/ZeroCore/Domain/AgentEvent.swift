@@ -10,6 +10,12 @@ public enum AgentEvent: Sendable, Equatable {
     case plan([PlanItem])
     case permissionRequested(PermissionRequest)
     case usage(Usage)
+    /// A running token estimate while the model thinks.
+    ///
+    /// Separate from `.usage` on purpose: that case means the turn's settled accounting, and
+    /// folding a live estimate into it leaves consumers unable to tell a partial guess from a
+    /// total they can bill against.
+    case thinkingProgress(estimatedTokens: Int)
     case turnEnded(StopReason)
     case failed(reason: String)
 
@@ -167,6 +173,13 @@ public struct Usage: Sendable, Equatable {
     public var cacheWriteTokens: Int?
     public var contextWindowUsed: Int?
     public var contextWindowTotal: Int?
+    public var thinkingTokens: Int?
+
+    /// Cost as reported by the provider, when it reports one.
+    ///
+    /// Present so a provider's own figure beats our price table (FR-30). Claude Code reports
+    /// `total_cost_usd`; a provider that reports nothing leaves this nil and falls back to the table.
+    public var costUSD: Double?
 
     public init(
         model: String? = nil,
@@ -175,7 +188,9 @@ public struct Usage: Sendable, Equatable {
         cacheReadTokens: Int? = nil,
         cacheWriteTokens: Int? = nil,
         contextWindowUsed: Int? = nil,
-        contextWindowTotal: Int? = nil
+        contextWindowTotal: Int? = nil,
+        thinkingTokens: Int? = nil,
+        costUSD: Double? = nil
     ) {
         self.model = model
         self.inputTokens = inputTokens
@@ -184,5 +199,7 @@ public struct Usage: Sendable, Equatable {
         self.cacheWriteTokens = cacheWriteTokens
         self.contextWindowUsed = contextWindowUsed
         self.contextWindowTotal = contextWindowTotal
+        self.thinkingTokens = thinkingTokens
+        self.costUSD = costUSD
     }
 }

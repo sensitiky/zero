@@ -67,9 +67,9 @@ public struct ClaudeCodeDecoder: ProtocolDecoder {
         guard let delta = json["estimated_tokens_delta"] as? Int else {
             return [.unrecognized(raw: raw)]
         }
-        // Emit delta as thinking content. Real thinking blocks would have text,
-        // but incremental estimates are useful for UI progress.
-        return [.thinkingDelta(String(delta))]
+        // A running estimate, not thinking prose: emitting it as `.thinkingDelta` would splice
+        // digits into the transcript, and as `.usage` it would be mistaken for the turn's total.
+        return [.thinkingProgress(estimatedTokens: delta)]
     }
 
     private mutating func decodePermissionDenied(json: [String: Any], raw: Data) -> [AgentEvent] {
@@ -130,18 +130,16 @@ public struct ClaudeCodeDecoder: ProtocolDecoder {
             return nil
         }
 
+        let inputDict = block["input"] as? [String: Any]
+
         // Serialize the input object to a JSON string
         let inputStr: String?
-        if let input = block["input"] {
-            if let inputDict = input as? [String: Any],
-               let jsonData = try? JSONSerialization.data(
-                   withJSONObject: inputDict,
-                   options: [.sortedKeys]
-               ) {
-                inputStr = String(decoding: jsonData, as: UTF8.self)
-            } else {
-                inputStr = nil
-            }
+        if let inputDict,
+           let jsonData = try? JSONSerialization.data(
+               withJSONObject: inputDict,
+               options: [.sortedKeys]
+           ) {
+            inputStr = String(decoding: jsonData, as: UTF8.self)
         } else {
             inputStr = nil
         }
@@ -151,7 +149,8 @@ public struct ClaudeCodeDecoder: ProtocolDecoder {
             name: toolName,
             input: inputStr,
             output: nil,
-            status: .pending
+            status: .pending,
+            edit: inputDict.flatMap { fileEdit(toolName: toolName, input: $0) }
         )
         pendingToolCalls[toolUseID] = toolCall
         return .toolCall(toolCall)
@@ -202,7 +201,11 @@ public struct ClaudeCodeDecoder: ProtocolDecoder {
 
         // Extract usage information
         if let usage = json["usage"] as? [String: Any] {
-            let usageEvent = parseUsage(usage: usage, model: json["model"] as? String)
+            let usageEvent = parseUsage(
+                usage: usage,
+                model: json["model"] as? String,
+                costUSD: json["total_cost_usd"] as? Double
+            )
             events.append(.usage(usageEvent))
         }
 
@@ -216,14 +219,39 @@ public struct ClaudeCodeDecoder: ProtocolDecoder {
 
     // MARK: - Parsing Helpers
 
-    private func parseUsage(usage: [String: Any], model: String?) -> Usage {
+    private func parseUsage(usage: [String: Any], model: String?, costUSD: Double? = nil) -> Usage {
+        let details = usage["output_tokens_details"] as? [String: Any]
         return Usage(
             model: model,
             inputTokens: usage["input_tokens"] as? Int,
             outputTokens: usage["output_tokens"] as? Int,
             cacheReadTokens: usage["cache_read_input_tokens"] as? Int,
-            cacheWriteTokens: usage["cache_creation_input_tokens"] as? Int
+            cacheWriteTokens: usage["cache_creation_input_tokens"] as? Int,
+            thinkingTokens: details?["thinking_tokens"] as? Int,
+            costUSD: costUSD
         )
+    }
+
+    /// A file-editing tool's input, as a diff the UI can render (FR-20).
+    ///
+    /// Returns nil for every other tool: a tool call without an edit renders as a plain call, and
+    /// guessing an edit out of an unknown input shape would render a wrong diff.
+    private func fileEdit(toolName: String, input: [String: Any]) -> FileEdit? {
+        guard let path = input["file_path"] as? String else { return nil }
+        switch toolName {
+        case "Write":
+            return FileEdit(path: path, oldText: nil, newText: input["content"] as? String)
+        case "Edit":
+            // TODO(B11): unverified — Write's shape comes from a capture, Edit's does not.
+            // Confirm old_string/new_string against a real capture before trusting the diff.
+            return FileEdit(
+                path: path,
+                oldText: input["old_string"] as? String,
+                newText: input["new_string"] as? String
+            )
+        default:
+            return nil
+        }
     }
 
     private func parseStopReason(_ reason: String) -> StopReason {

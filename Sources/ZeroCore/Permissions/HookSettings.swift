@@ -1,37 +1,41 @@
 import Foundation
 
-/// Builds the `--settings` JSON that installs the PreToolUse hook in Claude Code.
+/// Builds the `--settings` JSON that installs Zero's permission hook for one session.
 ///
-/// Claude Code accepts a JSON settings dict via `--settings '<json>'`. The hook is configured
-/// as a `PreToolUse` entry with the helper binary path.
-public struct HookSettings: Sendable {
-    /// The path to the zero-permission-hook binary.
-    private let helperPath: String
-
-    public init(helperPath: String) {
-        self.helperPath = helperPath
-    }
-
-    /// Generates the JSON string to pass to Claude Code's `--settings` flag.
+/// Passed inline on the command line rather than written to a file: Zero must never edit the
+/// user's own `settings.json`, and an inline blob also disappears when the session does.
+public enum HookSettings {
+    /// Tools worth stopping for. `matcher` is a regex over the tool name.
     ///
-    /// The format is: `{"hooks": {"PreToolUse": {"command": "..."}}}`
-    public func settingsJSON() throws -> String {
+    /// Read-only tools are deliberately absent: prompting for every file read trains the user to
+    /// approve without looking, which costs more safety than it buys.
+    public static let defaultMatcher = "Bash|Write|Edit|NotebookEdit|WebFetch"
+
+    public static func json(
+        helperPath: String,
+        socketPath: String,
+        matcher: String = defaultMatcher
+    ) -> String {
+        // Both paths are quoted because the hook command is interpreted by a shell and an
+        // Application Support path routinely contains spaces.
+        let command = "\(shellQuoted(helperPath)) \(shellQuoted(socketPath))"
         let settings: [String: Any] = [
             "hooks": [
                 "PreToolUse": [
-                    "command": helperPath
+                    [
+                        "matcher": matcher,
+                        "hooks": [["type": "command", "command": command]],
+                    ]
                 ]
             ]
         ]
-
-        let data = try JSONSerialization.data(withJSONObject: settings, options: [.sortedKeys])
-        guard let json = String(data: data, encoding: .utf8) else {
-            throw SettingsError.encodingFailed
+        guard let data = try? JSONSerialization.data(withJSONObject: settings, options: [.sortedKeys]) else {
+            return "{}"
         }
-        return json
+        return String(decoding: data, as: UTF8.self)
     }
 
-    enum SettingsError: Error, Sendable {
-        case encodingFailed
+    static func shellQuoted(_ path: String) -> String {
+        "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }

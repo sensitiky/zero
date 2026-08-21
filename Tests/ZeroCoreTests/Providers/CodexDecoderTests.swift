@@ -468,6 +468,8 @@ private func eventKind(_ event: AgentEvent) -> String {
         return "toolCall"
     case .plan:
         return "plan"
+    case .thinkingProgress:
+        return "thinkingProgress"
     case .permissionRequested:
         return "permissionRequested"
     case .usage:

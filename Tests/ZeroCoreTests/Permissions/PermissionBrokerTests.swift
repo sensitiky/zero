@@ -1,391 +1,306 @@
+import Darwin
 import Foundation
 import Testing
 
 @testable import ZeroCore
 
-@Suite("PermissionBroker")
+@Suite("PermissionBroker", .serialized)
 struct PermissionBrokerTests {
     // MARK: - Helpers
 
-    /// Creates a temporary directory for socket files.
-    func createTempSocketDir() throws -> URL {
-        let tempDir = FileManager.default.temporaryDirectory
-        let socketDir = tempDir.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: socketDir, withIntermediateDirectories: true)
-        return socketDir
+    /// Short on purpose: `sun_path` is 104 bytes and the system temp directory alone eats half of
+    /// it. A test that used `temporaryDirectory` here failed with `.pathTooLong`, which is the same
+    /// wall the app would hit in Application Support.
+    private func tempDirectory() -> URL {
+        let url = URL(fileURLWithPath: "/tmp/zs-\(UUID().uuidString.prefix(8))")
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
     }
 
-    /// Cleans up a temporary directory.
-    func cleanupTempDir(_ url: URL) {
-        try? FileManager.default.removeItem(at: url)
+    /// The built helper binary.
+    ///
+    /// Located via `Bundle.module`, whose resource bundle sits in the products directory.
+    /// `Bundle.main` points at swiftpm-testing-helper under the toolchain, not at our products.
+    private var helperURL: URL {
+        Bundle.module.bundleURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("zero-permission-hook")
     }
 
-    // MARK: - Tests
+    /// A hook payload shaped the way Claude Code 2.1.237 actually sends it — snake_case, verified
+    /// against a real capture.
+    private func hookPayload(tool: String = "Write") -> Data {
+        let payload: [String: Any] = [
+            "session_id": UUID().uuidString,
+            "cwd": "/tmp",
+            "permission_mode": "acceptEdits",
+            "hook_event_name": "PreToolUse",
+            "tool_name": tool,
+            "tool_input": ["file_path": "/tmp/danger.txt", "content": "boom"],
+        ]
+        return try! JSONSerialization.data(withJSONObject: payload)
+    }
 
-    @Test("request with allow decision returns allow hook response")
-    func allowRequest() async throws {
-        let socketDir = try createTempSocketDir()
-        defer { cleanupTempDir(socketDir) }
+    /// Runs the real helper against `socketPath` and returns what it printed on stdout.
+    private func runHelper(socketPath: String, stdin: Data) throws -> [String: Any] {
+        let process = Process()
+        process.executableURL = helperURL
+        process.arguments = [socketPath]
+        let input = Pipe()
+        let output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        try process.run()
+        // The throwing variants on purpose: the helper exits before reading stdin on the immediate
+        // deny paths, and `FileHandle.write(_:)` traps on a closed pipe instead of erroring.
+        try? input.fileHandleForWriting.write(contentsOf: stdin)
+        try? input.fileHandleForWriting.close()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw DecoderError("helper printed no JSON: \(String(decoding: data, as: UTF8.self))")
+        }
+        return json
+    }
 
-        let sessionID = "test-session-allow"
+    private func decision(from helperOutput: [String: Any]) -> String? {
+        (helperOutput["hookSpecificOutput"] as? [String: Any])?["permissionDecision"] as? String
+    }
 
-        let broker = PermissionBroker(
-            handler: { request, allow, deny in
-                allow(PermissionOrigin.userAction)
-            },
-            socketsDirectory: socketDir,
-            timeout: 2.0
+    // MARK: - End to end, through the real helper binary
+
+    @Test("the real helper carries an allow from the app back to stdout")
+    func endToEndAllow() async throws {
+        #expect(
+            FileManager.default.isExecutableFile(atPath: helperURL.path),
+            "zero-permission-hook is not built at \(helperURL.path)"
         )
+        let directory = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
 
-        try await broker.startSession(id: sessionID)
+        let broker = PermissionBroker(socketsDirectory: directory) { request in
+            // The app would show UI here. Asserting the request survived the wire intact is the
+            // point: a broker that answers correctly about the wrong tool is not safe.
+            #expect(request.toolName == "Write")
+            #expect(request.detail.contains("danger.txt"))
+            return .init(decision: .allow, origin: .userAction)
+        }
+        let path = try await broker.startSession(id: "session-allow")
 
-        let request = HookRequest(
-            toolName: "Read",
-            toolInput: #"{"path": "/tmp/test"}"#,
-            requestID: "req-1",
-            sessionID: sessionID,
+        let output = try runHelper(socketPath: path, stdin: hookPayload())
+        #expect(decision(from: output) == "allow")
+        #expect((output["hookSpecificOutput"] as? [String: Any])?["hookEventName"] as? String == "PreToolUse")
+        await broker.stopAll()
+    }
+
+    @Test("the real helper carries a deny back to stdout")
+    func endToEndDeny() async throws {
+        let directory = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let broker = PermissionBroker(socketsDirectory: directory) { _ in
+            .init(decision: .deny, origin: .userAction)
+        }
+        let path = try await broker.startSession(id: "session-deny")
+
+        #expect(decision(from: try runHelper(socketPath: path, stdin: hookPayload())) == "deny")
+        await broker.stopAll()
+    }
+
+    // MARK: - Fail closed
+
+    @Test("an app that never answers produces deny")
+    func timeoutDenies() async throws {
+        let directory = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let broker = PermissionBroker(socketsDirectory: directory, timeout: 0.2) { _ in
+            try? await Task.sleep(for: .seconds(30))
+            return .init(decision: .allow, origin: .userAction)
+        }
+        let path = try await broker.startSession(id: "session-timeout")
+
+        #expect(decision(from: try runHelper(socketPath: path, stdin: hookPayload())) == "deny")
+        await broker.stopAll()
+    }
+
+    @Test("an unreachable app produces deny")
+    func unreachableDenies() throws {
+        let missing = tempDirectory().appendingPathComponent("nobody-listening.sock").path
+        #expect(decision(from: try runHelper(socketPath: missing, stdin: hookPayload())) == "deny")
+    }
+
+    @Test("a hook payload that is not JSON produces deny")
+    func malformedStdinDenies() async throws {
+        let directory = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let broker = PermissionBroker(socketsDirectory: directory) { _ in
+            .init(decision: .allow, origin: .userAction)
+        }
+        let path = try await broker.startSession(id: "session-malformed")
+
+        let output = try runHelper(socketPath: path, stdin: Data("not json at all".utf8))
+        #expect(decision(from: output) == "deny")
+        await broker.stopAll()
+    }
+
+    @Test("a hook payload with no tool_name produces deny")
+    func missingToolNameDenies() throws {
+        let payload = try! JSONSerialization.data(withJSONObject: ["cwd": "/tmp"])
+        let missing = tempDirectory().appendingPathComponent("unused.sock").path
+        #expect(decision(from: try runHelper(socketPath: missing, stdin: payload)) == "deny")
+    }
+
+    @Test("a request naming a different session is denied without reaching the app")
+    func sessionMismatchDenies() async throws {
+        let directory = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let handlerRan = Mutex(false)
+        let broker = PermissionBroker(socketsDirectory: directory) { _ in
+            handlerRan.set(true)
+            return .init(decision: .allow, origin: .userAction)
+        }
+        let path = try await broker.startSession(id: "session-real")
+
+        // Bypass the helper: it derives the session from the socket name, so only a crafted client
+        // can lie about it. That is exactly the client worth testing.
+        let forged = HookRequest(
+            toolName: "Bash",
+            toolInput: "{}",
+            requestID: "r1",
+            sessionID: "some-other-session",
             cwd: "/tmp",
-            permissionMode: "permissionMode"
+            permissionMode: "manual"
         )
+        let fd = try #require(SocketIO.connect(path: path, timeout: 2))
+        defer { Darwin.close(fd) }
+        #expect(SocketIO.writeFrame(fd, try JSONEncoder().encode(forged)))
+        let responseData = try #require(SocketIO.readFrame(fd))
+        let response = try JSONDecoder().decode(HookResponse.self, from: responseData)
 
-        let response = await withCheckedContinuation { (continuation: CheckedContinuation<PermissionBroker.Decision, Never>) in
-            Task {
-                await broker.processRequest(request) { decision in
-                    continuation.resume(returning: decision)
-                }
-            }
+        #expect(response.hookSpecificOutput.permissionDecision == .deny)
+        #expect(handlerRan.get() == false, "a forged session reached the app's UI")
+        await broker.stopAll()
+    }
+
+    // MARK: - Socket hygiene
+
+    @Test("the session socket is owner-only")
+    func socketIsOwnerOnly() async throws {
+        let directory = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let broker = PermissionBroker(socketsDirectory: directory) { _ in
+            .init(decision: .deny, origin: .userAction)
         }
+        let path = try await broker.startSession(id: "session-mode")
 
-        #expect(response == .allow)
-
-        await broker.stopSession(id: sessionID)
+        let mode = try FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? NSNumber
+        #expect(mode?.int16Value == 0o600)
+        await broker.stopAll()
     }
 
-    @Test("request with deny decision returns deny hook response")
-    func denyRequest() async throws {
-        let socketDir = try createTempSocketDir()
-        defer { cleanupTempDir(socketDir) }
-
-        let sessionID = "test-session-deny"
-
-        let broker = PermissionBroker(
-            handler: { request, allow, deny in
-                deny(PermissionOrigin.userAction)
-            },
-            socketsDirectory: socketDir,
-            timeout: 2.0
-        )
-
-        try await broker.startSession(id: sessionID)
-
-        let request = HookRequest(
-            toolName: "Write",
-            toolInput: #"{"path": "/tmp/test"}"#,
-            requestID: "req-2",
-            sessionID: sessionID,
-            cwd: "/tmp",
-            permissionMode: "permissionMode"
-        )
-
-        let response = await withCheckedContinuation { (continuation: CheckedContinuation<PermissionBroker.Decision, Never>) in
-            Task {
-                await broker.processRequest(request) { decision in
-                    continuation.resume(returning: decision)
-                }
-            }
+    @Test("stopping a session removes its socket")
+    func stopRemovesSocket() async throws {
+        let directory = tempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let broker = PermissionBroker(socketsDirectory: directory) { _ in
+            .init(decision: .deny, origin: .userAction)
         }
-
-        #expect(response == .deny)
-
-        await broker.stopSession(id: sessionID)
+        let path = try await broker.startSession(id: "session-stop")
+        #expect(FileManager.default.fileExists(atPath: path))
+        await broker.stopSession(id: "session-stop")
+        #expect(!FileManager.default.fileExists(atPath: path))
     }
 
-    @Test("timeout produces deny decision")
-    func timeoutProducesDeny() async throws {
-        let socketDir = try createTempSocketDir()
-        defer { cleanupTempDir(socketDir) }
+    // MARK: - The wire shape Claude Code actually reads
 
-        let sessionID = "test-session-timeout"
+    @Test("hook output uses camelCase keys")
+    func hookOutputIsCamelCase() throws {
+        // Regression guard. An earlier revision emitted snake_case here. Claude Code ignores an
+        // unrecognized response, so the tool call proceeds — the deny silently becomes an allow.
+        let json = String(decoding: HookResponse(decision: .deny, reason: "x").stdoutPayload(), as: UTF8.self)
+        #expect(json.contains("\"hookSpecificOutput\""))
+        #expect(json.contains("\"hookEventName\""))
+        #expect(json.contains("\"permissionDecision\""))
+        #expect(json.contains("\"permissionDecisionReason\""))
+        #expect(!json.contains("permission_decision"))
+        #expect(!json.contains("hook_event_name"))
+    }
 
-        let broker = PermissionBroker(
-            handler: { request, allow, deny in
-                // Intentionally never call allow or deny - simulate forgotten dialog
-            },
-            socketsDirectory: socketDir,
-            timeout: 0.1 // Very short timeout for testing
+    @Test("hook request parses the snake_case shape Claude Code sends")
+    func hookRequestIsSnakeCase() throws {
+        let wire = Data(#"{"tool_name":"Bash","tool_input":"{}","request_id":"r","session_id":"s","cwd":"/tmp","permission_mode":"manual"}"#.utf8)
+        let request = try JSONDecoder().decode(HookRequest.self, from: wire)
+        #expect(request.toolName == "Bash")
+        #expect(request.sessionID == "s")
+        #expect(request.permissionMode == "manual")
+    }
+
+    @Test("settings JSON installs a PreToolUse hook and quotes paths with spaces")
+    func settingsJSON() throws {
+        let json = HookSettings.json(
+            helperPath: "/Applications/Zero.app/Contents/MacOS/zero permission hook",
+            socketPath: "/tmp/a b/s.sock"
         )
-
-        try await broker.startSession(id: sessionID)
-
-        let request = HookRequest(
-            toolName: "Read",
-            toolInput: #"{"path": "/tmp/test"}"#,
-            requestID: "req-3",
-            sessionID: sessionID,
-            cwd: "/tmp",
-            permissionMode: "permissionMode"
+        let parsed = try #require(
+            try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any]
         )
-
-        let response = await withCheckedContinuation { (continuation: CheckedContinuation<PermissionBroker.Decision, Never>) in
-            Task {
-                await broker.processRequest(request) { decision in
-                    continuation.resume(returning: decision)
-                }
-            }
-        }
-
-        #expect(response == .deny)
-
-        await broker.stopSession(id: sessionID)
+        let hooks = try #require(parsed["hooks"] as? [String: Any])
+        let preToolUse = try #require(hooks["PreToolUse"] as? [[String: Any]])
+        let command = try #require((preToolUse.first?["hooks"] as? [[String: String]])?.first?["command"])
+        #expect(command.contains("'/Applications/Zero.app/Contents/MacOS/zero permission hook'"))
+        #expect(command.contains("'/tmp/a b/s.sock'"))
     }
 
-    @Test("session mismatch produces deny decision")
-    func sessionMismatchProducesDeny() async throws {
-        let socketDir = try createTempSocketDir()
-        defer { cleanupTempDir(socketDir) }
+    // MARK: - Framing
 
-        let sessionID = "test-session-real"
-        let otherSessionID = "test-session-fake"
-
-        let broker = PermissionBroker(
-            handler: { request, allow, deny in
-                allow(PermissionOrigin.userAction)
-            },
-            socketsDirectory: socketDir,
-            timeout: 2.0
-        )
-
-        try await broker.startSession(id: sessionID)
-
-        // Send a request for a different session
-        let request = HookRequest(
-            toolName: "Read",
-            toolInput: #"{"path": "/tmp/test"}"#,
-            requestID: "req-4",
-            sessionID: otherSessionID, // Different session
-            cwd: "/tmp",
-            permissionMode: "permissionMode"
-        )
-
-        let response = await withCheckedContinuation { (continuation: CheckedContinuation<PermissionBroker.Decision, Never>) in
-            Task {
-                await broker.processRequest(request) { decision in
-                    continuation.resume(returning: decision)
-                }
-            }
-        }
-
-        // Should deny because the session doesn't match
-        #expect(response == .deny)
-
-        await broker.stopSession(id: sessionID)
+    @Test("a frame split across reads reassembles")
+    func framePartial() throws {
+        let payload = Data(#"{"a":1}"#.utf8)
+        let framed = SocketIO.encode(payload)
+        #expect(SocketIO.decode(framed.prefix(framed.count - 1)) == nil)
+        let decoded = try #require(SocketIO.decode(framed))
+        #expect(decoded.payload == payload)
     }
 
-    @Test("socket is created with owner-only permissions")
-    func socketPermissionsAreOwnerOnly() async throws {
-        let socketDir = try createTempSocketDir()
-        defer { cleanupTempDir(socketDir) }
+    @Test("two frames in one buffer decode in order")
+    func frameMultiple() throws {
+        let first = Data(#"{"a":1}"#.utf8)
+        let second = Data(#"{"b":2}"#.utf8)
+        var buffer = SocketIO.encode(first)
+        buffer.append(SocketIO.encode(second))
 
-        let sessionID = "test-session-perms"
-
-        let broker = PermissionBroker(
-            handler: { _, allow, _ in allow(PermissionOrigin.userAction) },
-            socketsDirectory: socketDir,
-            timeout: 2.0
-        )
-
-        try await broker.startSession(id: sessionID)
-
-        let socketPath = socketDir.appendingPathComponent("\(sessionID).sock").path
-        let attrs = try FileManager.default.attributesOfItem(atPath: socketPath)
-        let permissions = attrs[.posixPermissions] as? NSNumber
-        let mode = Int32(permissions?.int32Value ?? 0)
-
-        // Socket should have permissions 0o600 (owner read/write, no group or other)
-        let ownerOnly = (mode & 0o777) == 0o600
-        #expect(ownerOnly, "Socket permissions should be 0o600, got \(String(mode, radix: 8))")
-
-        // Note: don't call stopSession to keep the socket file for cleanup by defer
+        let one = try #require(SocketIO.decode(buffer))
+        #expect(one.payload == first)
+        let two = try #require(SocketIO.decode(one.remaining))
+        #expect(two.payload == second)
     }
 
-    @Test("HookSettings produces valid JSON with PreToolUse hook")
-    func hookSettingsProducesValidJSON() throws {
-        let helperPath = "/usr/local/bin/zero-permission-hook"
-        let settings = HookSettings(helperPath: helperPath)
+    @Test("a frame claiming more than the cap is refused")
+    func frameOversizeRefused() {
+        var buffer = withUnsafeBytes(of: UInt32(SocketIO.maxPayloadBytes + 1).bigEndian) { Data($0) }
+        buffer.append(Data(repeating: 0, count: 16))
+        #expect(SocketIO.decode(buffer) == nil)
+    }
+}
 
-        let json = try settings.settingsJSON()
+/// Minimal lock box so a test can observe whether a `@Sendable` handler ran.
+private final class Mutex<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value
 
-        // Parse the JSON to verify structure
-        guard let data = json.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let hooks = parsed["hooks"] as? [String: Any],
-              let preTool = hooks["PreToolUse"] as? [String: Any],
-              let command = preTool["command"] as? String
-        else {
-            Issue.record("Failed to parse hook settings JSON")
-            return
-        }
+    init(_ value: Value) { self.value = value }
 
-        #expect(command == helperPath)
+    func get() -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
     }
 
-    @Test("hook request encodes and decodes correctly")
-    func hookRequestCodec() throws {
-        let original = HookRequest(
-            toolName: "Write",
-            toolInput: #"{"path": "/test"}"#,
-            requestID: "req-123",
-            sessionID: "sess-456",
-            cwd: "/home/user",
-            permissionMode: "permissionMode"
-        )
-
-        let encoded = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(HookRequest.self, from: encoded)
-
-        #expect(decoded.toolName == original.toolName)
-        #expect(decoded.toolInput == original.toolInput)
-        #expect(decoded.requestID == original.requestID)
-        #expect(decoded.sessionID == original.sessionID)
-        #expect(decoded.cwd == original.cwd)
-        #expect(decoded.permissionMode == original.permissionMode)
-    }
-
-    @Test("hook response encodes correctly with allow decision")
-    func hookResponseAllowCodec() throws {
-        let response = HookResponse(
-            hookSpecificOutput: HookResponse.HookOutput(
-                permissionDecision: .allow,
-                permissionDecisionReason: "User approved"
-            )
-        )
-
-        let encoded = try JSONEncoder().encode(response)
-
-        guard let json = try? JSONSerialization.jsonObject(with: encoded) as? [String: Any],
-              let hookOutput = json["hookSpecificOutput"] as? [String: Any],
-              let decision = hookOutput["permission_decision"] as? String
-        else {
-            Issue.record("Failed to verify hook response encoding")
-            return
-        }
-
-        #expect(decision == "allow")
-    }
-
-    @Test("hook response encodes correctly with deny decision")
-    func hookResponseDenyCodec() throws {
-        let response = HookResponse(
-            hookSpecificOutput: HookResponse.HookOutput(
-                permissionDecision: .deny,
-                permissionDecisionReason: "User denied"
-            )
-        )
-
-        let encoded = try JSONEncoder().encode(response)
-
-        guard let json = try? JSONSerialization.jsonObject(with: encoded) as? [String: Any],
-              let hookOutput = json["hookSpecificOutput"] as? [String: Any],
-              let decision = hookOutput["permission_decision"] as? String
-        else {
-            Issue.record("Failed to verify hook response encoding")
-            return
-        }
-
-        #expect(decision == "deny")
-    }
-
-    @Test("socket frame encoding and decoding")
-    func socketFrameCodec() {
-        let message = Data(#"{"test": "message"}"#.utf8)
-        let encoded = SocketFrame.encode(message)
-
-        #expect(encoded.count == 4 + message.count)
-
-        guard let (payload, remaining) = SocketFrame.decode(encoded) else {
-            Issue.record("Failed to decode socket frame")
-            return
-        }
-
-        #expect(payload == message)
-        #expect(remaining.isEmpty)
-    }
-
-    @Test("socket frame handles partial data")
-    func socketFramePartialData() {
-        let message = Data(#"{"test": "message"}"#.utf8)
-        let encoded = SocketFrame.encode(message)
-
-        // Only send part of the frame
-        let partial = encoded.prefix(2)
-        let result = SocketFrame.decode(Data(partial))
-
-        #expect(result == nil, "Should return nil for incomplete frame")
-    }
-
-    @Test("socket frame handles multiple messages")
-    func socketFrameMultipleMessages() {
-        let msg1 = Data(#"{"a": 1}"#.utf8)
-        let msg2 = Data(#"{"b": 2}"#.utf8)
-
-        let frame1 = SocketFrame.encode(msg1)
-        let frame2 = SocketFrame.encode(msg2)
-        var combined = frame1
-        combined.append(frame2)
-
-        guard let (payload1, remaining1) = SocketFrame.decode(combined) else {
-            Issue.record("Failed to decode first frame")
-            return
-        }
-
-        #expect(payload1 == msg1)
-
-        guard let (payload2, remaining2) = SocketFrame.decode(remaining1) else {
-            Issue.record("Failed to decode second frame")
-            return
-        }
-
-        #expect(payload2 == msg2)
-        #expect(remaining2.isEmpty)
-    }
-
-    @Test("permission origin is required for user action")
-    func permissionOriginUserAction() async throws {
-        let socketDir = try createTempSocketDir()
-        defer { cleanupTempDir(socketDir) }
-
-        let sessionID = "test-session-origin"
-
-        let broker = PermissionBroker(
-            handler: { request, allow, deny in
-                // Use the userAction origin to allow
-                allow(PermissionOrigin.userAction)
-            },
-            socketsDirectory: socketDir,
-            timeout: 2.0
-        )
-
-        try await broker.startSession(id: sessionID)
-
-        let request = HookRequest(
-            toolName: "Read",
-            toolInput: #"{"path": "/tmp/test"}"#,
-            requestID: "req-origin-1",
-            sessionID: sessionID,
-            cwd: "/tmp",
-            permissionMode: "permissionMode"
-        )
-
-        let decision = await withCheckedContinuation { (continuation: CheckedContinuation<PermissionBroker.Decision, Never>) in
-            Task {
-                await broker.processRequest(request) { decision in
-                    continuation.resume(returning: decision)
-                }
-            }
-        }
-
-        #expect(decision == .allow)
-
-        await broker.stopSession(id: sessionID)
+    func set(_ newValue: Value) {
+        lock.lock()
+        value = newValue
+        lock.unlock()
     }
 }

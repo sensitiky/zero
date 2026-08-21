@@ -182,9 +182,11 @@ struct ProtocolLogTests {
         // Wait for background writes.
         try await Task.sleep(for: .milliseconds(100))
 
-        // Should not crash; the log file may or may not exist depending on the redactor.
-        // The important thing is no crash.
-        #expect(true)
+        // A vacuous #expect(true) stood here. "Handled gracefully" has to mean something: the
+        // record must survive rather than be silently dropped because the redactor could not
+        // parse it as JSON.
+        let written = try #require(try? Data(contentsOf: logPath))
+        #expect(!written.isEmpty)
     }
 
     @Test("disabled logging does not write even after being enabled then disabled")

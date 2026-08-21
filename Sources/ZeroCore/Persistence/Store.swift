@@ -117,7 +117,8 @@ final class Store {
         role: String,
         content: String
     ) throws -> Message {
-        let nextSeq = (session.messages.map { $0.sequenceNumber }.max() ?? -1) + 1
+        let nextSeq = session.nextMessageSequence
+        session.nextMessageSequence += 1
         let message = Message(
             session: session,
             role: role,
@@ -125,7 +126,6 @@ final class Store {
             sequenceNumber: nextSeq
         )
         context.insert(message)
-        session.messages.append(message)
         try context.save()
         return message
     }
@@ -204,7 +204,8 @@ final class Store {
         contextWindowUsed: Int?,
         contextWindowTotal: Int?
     ) throws -> UsageRecord {
-        let nextSeq = (session.usageRecords.map { $0.sequenceNumber }.max() ?? -1) + 1
+        let nextSeq = session.nextUsageSequence
+        session.nextUsageSequence += 1
         let record = UsageRecord(
             session: session,
             sequenceNumber: nextSeq,
@@ -217,7 +218,6 @@ final class Store {
             contextWindowTotal: contextWindowTotal
         )
         context.insert(record)
-        session.usageRecords.append(record)
         try context.save()
         return record
     }

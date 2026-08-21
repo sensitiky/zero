@@ -42,6 +42,15 @@ final class Session {
     var endedAt: Date?
     var errorMessage: String?
 
+    /// Monotonic counters for append ordering.
+    ///
+    /// Held on the session rather than derived from the collections: deriving `max + 1` means
+    /// faulting every existing row on every append, which is O(n) per append and O(n²) per
+    /// session. That cost is what an earlier revision of this file measured and mistook for
+    /// SwiftData being unsuitable — see MEASUREMENTS.md.
+    var nextMessageSequence: Int = 0
+    var nextUsageSequence: Int = 0
+
     @Relationship(deleteRule: .cascade, inverse: \Message.session)
     var messages: [Message] = []
 
