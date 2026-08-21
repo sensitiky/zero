@@ -53,7 +53,14 @@ public struct PricingTable: Sendable {
 
     /// The table shipped with the app. Empty if the resource is missing, which yields unknown costs
     /// rather than wrong ones.
-    public static func bundled() -> PricingTable {
+    /// Cached once per process. A caller that stores `PricingTable.bundled()` as a struct property
+    /// with a default-value expression — as `UsageIndicator` did — re-evaluates that expression on
+    /// every construction, and every construction is every re-render. Without this cache that reads
+    /// the bundle off disk and runs it through `JSONDecoder`, synchronously, on the main thread, on
+    /// every keystroke a sibling text field produced — the real input-lag culprit, worse than the
+    /// markdown parsing this was mistaken for. `static let` is lazy and thread-safe by construction,
+    /// so this loads once regardless of how many views call `bundled()`.
+    private static let cached: PricingTable = {
         guard let url = Bundle.module.url(forResource: "pricing", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let document = try? JSONDecoder().decode(Document.self, from: data)
@@ -61,7 +68,9 @@ public struct PricingTable: Sendable {
             return PricingTable(version: "unavailable", entries: [])
         }
         return PricingTable(version: document.version, entries: document.models)
-    }
+    }()
+
+    public static func bundled() -> PricingTable { cached }
 
     public func entry(forModel model: String) -> Entry? {
         // Longest match first, so a specific entry beats a broader one.

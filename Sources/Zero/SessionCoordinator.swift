@@ -32,10 +32,21 @@ final class SessionCoordinator {
         self.model = model
     }
 
+    /// Cached: `ProviderRegistry.status(of:)` spawns a subprocess to read `--version`. Every reader
+    /// of this — `ComposeView`'s provider picker and its unavailable-reason text, both re-evaluated
+    /// on every keystroke since they sit under `ComposeView`'s own local `@State` for the task
+    /// field — was doing that spawn, per provider, on every keystroke. A provider's installed state
+    /// does not change within a running session in practice, so computing this once is the right
+    /// trade, not just a faster one.
+    private var cachedProviders: [(descriptor: ProviderDescriptor, status: ProviderStatus)]?
+
     var availableProviders: [(descriptor: ProviderDescriptor, status: ProviderStatus)] {
-        [ProviderDescriptor.claude, ProviderDescriptor.codex].map {
+        if let cachedProviders { return cachedProviders }
+        let computed = [ProviderDescriptor.claude, ProviderDescriptor.codex].map {
             ($0, registry.status(of: $0))
         }
+        cachedProviders = computed
+        return computed
     }
 
     func descriptor(for id: String) -> ProviderDescriptor? {
