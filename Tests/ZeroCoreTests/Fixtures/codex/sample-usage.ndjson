@@ -1,0 +1,5 @@
+{"method":"turn/started","params":{"turn":{"id":"turn_005"}}}
+{"method":"item/started","params":{"item":{"id":"item_006","type":"agentMessage"}}}
+{"method":"item/agentMessage/delta","params":{"itemId":"item_006","deltaIndex":0,"text":"Using cache"}}
+{"method":"item/completed","params":{"item":{"id":"item_006","type":"agentMessage","text":"Using cache"}}}
+{"method":"turn/completed","params":{"turn":{"id":"turn_005","status":"completed","stopReason":"endTurn"},"usage":{"inputTokens":100,"outputTokens":50,"cacheReadTokens":200,"cacheWriteTokens":75,"contextWindowUsed":350,"contextWindowTotal":200000}}}

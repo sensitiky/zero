@@ -1,0 +1,8 @@
+{"method":"turn/started","params":{"turn":{"id":"turn_003"}}}
+{"method":"item/started","params":{"item":{"id":"item_004","type":"agentMessage"}}}
+{"method":"item/reasoning/textDelta","params":{"itemId":"item_004","deltaIndex":0,"text":"Let me think about this"}}
+{"method":"item/reasoning/textDelta","params":{"itemId":"item_004","deltaIndex":1,"text":" problem step by step."}}
+{"method":"item/agentMessage/delta","params":{"itemId":"item_004","deltaIndex":0,"text":"The answer is"}}
+{"method":"item/agentMessage/delta","params":{"itemId":"item_004","deltaIndex":1,"text":" 42"}}
+{"method":"item/completed","params":{"item":{"id":"item_004","type":"agentMessage","text":"The answer is 42"}}}
+{"method":"turn/completed","params":{"turn":{"id":"turn_003","status":"completed","stopReason":"endTurn"},"usage":{"inputTokens":20,"outputTokens":12}}}
