@@ -4,11 +4,11 @@
   "flow": "feature",
   "branch": "feat/001-agent-chat-core",
   "isolation": "current-checkout-branch",
-  "phase": "plan",
-  "nextStep": "Gate 2 — revisión del plan por el usuario",
+  "phase": "implementation",
+  "nextStep": "B4/B5/B6/B7 + C1/C2 + D1 en paralelo via subagentes",
   "documents": {
     "docs/prds/001-agent-chat-core/PRD.md": "approved",
-    "docs/prds/001-agent-chat-core/PLAN.md": "in-review",
+    "docs/prds/001-agent-chat-core/PLAN.md": "approved",
     "docs/prds/001-agent-chat-core/TESTING.md": "not-started"
   },
   "gates": [
@@ -19,7 +19,7 @@
     },
     {
       "id": "plan",
-      "status": "pending",
+      "status": "passed",
       "url": null
     },
     {
@@ -38,7 +38,183 @@
       "url": null
     }
   ],
-  "steps": [],
+  "steps": [
+    {
+      "id": "A1",
+      "title": "Paquete SPM Zero, macOS 26.0, arm64, Swift 6 language mode",
+      "status": "done"
+    },
+    {
+      "id": "A2",
+      "title": "Swift 6 strict concurrency, .swift-version fijado",
+      "status": "done"
+    },
+    {
+      "id": "A3",
+      "title": "Targets ZeroCore / ZeroCoreTests / zero-probe",
+      "status": "done"
+    },
+    {
+      "id": "A4",
+      "title": "Estructura de fixtures por proveedor",
+      "status": "done"
+    },
+    {
+      "id": "B1",
+      "title": "AgentProcess: Process + 3 pipes, sin PTY, stdin persistente",
+      "status": "done"
+    },
+    {
+      "id": "B2",
+      "title": "LineAccumulator: framing NDJSON con 8 tests",
+      "status": "done"
+    },
+    {
+      "id": "B3",
+      "title": "AgentEvent + ProtocolDecoder/Encoder, PermissionOrigin",
+      "status": "done"
+    },
+    {
+      "id": "B4",
+      "title": "ClaudeCodeAdapter: stream-json + correlacion control_request",
+      "status": "todo"
+    },
+    {
+      "id": "B5",
+      "title": "CodexAdapter: app-server JSON-RPC",
+      "status": "todo"
+    },
+    {
+      "id": "B6",
+      "title": "ACPAdapter: initialize/session.new/prompt/update",
+      "status": "todo"
+    },
+    {
+      "id": "B7",
+      "title": "ProviderRegistry: resolucion, version, auth",
+      "status": "todo"
+    },
+    {
+      "id": "B8",
+      "title": "Cancelacion de turno por proveedor",
+      "status": "todo"
+    },
+    {
+      "id": "B9",
+      "title": "Log de protocolo crudo con redaccion",
+      "status": "todo"
+    },
+    {
+      "id": "C1",
+      "title": "Modelos SwiftData",
+      "status": "todo"
+    },
+    {
+      "id": "C2",
+      "title": "Puerta de medicion: benchmark de append 10k+10k",
+      "status": "todo"
+    },
+    {
+      "id": "C3",
+      "title": "Persistir y restaurar sesiones e historial",
+      "status": "todo"
+    },
+    {
+      "id": "C4",
+      "title": "Resume de sesion con degradacion",
+      "status": "todo"
+    },
+    {
+      "id": "D1",
+      "title": "GitService: worktrees, naming, repo sucio, validacion de ruta",
+      "status": "todo"
+    },
+    {
+      "id": "D2",
+      "title": "Creacion de sesion end-to-end",
+      "status": "todo"
+    },
+    {
+      "id": "D3",
+      "title": "Cierre de sesion con confirmacion",
+      "status": "todo"
+    },
+    {
+      "id": "D4",
+      "title": "Maquina de estados de sesion",
+      "status": "todo"
+    },
+    {
+      "id": "D5",
+      "title": "N sesiones concurrentes sin bloquear el main actor",
+      "status": "todo"
+    },
+    {
+      "id": "E1",
+      "title": "Shell: sidebar / chat / inspector",
+      "status": "todo"
+    },
+    {
+      "id": "E2",
+      "title": "Transcript con streaming, seleccion, copia, busqueda",
+      "status": "todo"
+    },
+    {
+      "id": "E3",
+      "title": "Celdas de tool call, diff, thinking, plan",
+      "status": "todo"
+    },
+    {
+      "id": "E4",
+      "title": "UI de permisos y modos por sesion",
+      "status": "todo"
+    },
+    {
+      "id": "E5",
+      "title": "Operacion completa por teclado y command palette",
+      "status": "todo"
+    },
+    {
+      "id": "E6",
+      "title": "Pase de accesibilidad",
+      "status": "todo"
+    },
+    {
+      "id": "F1",
+      "title": "Uso de tokens por turno desde los adapters",
+      "status": "todo"
+    },
+    {
+      "id": "F2",
+      "title": "Tabla de precios horneada, costo desconocido explicito",
+      "status": "todo"
+    },
+    {
+      "id": "F3",
+      "title": "Inspector de costo y aviso de contexto",
+      "status": "todo"
+    },
+    {
+      "id": "G1",
+      "title": "Medir NFR de rendimiento",
+      "status": "todo"
+    },
+    {
+      "id": "G2",
+      "title": "Auditoria de main actor",
+      "status": "todo"
+    },
+    {
+      "id": "G3",
+      "title": "Verificar bundle sin Node/Electron",
+      "status": "todo"
+    },
+    {
+      "id": "G4",
+      "title": "Firma, notarizacion y DMG",
+      "status": "todo"
+    }
+  ],
   "decisions": {
     "scope-v1": "Chat nativo sin PTY + multi-agente + worktrees. Sin diff viewer, editor, browser ni terminal.",
     "providers-v1": "Claude Code (stream-json) + Codex (app-server) + ACP genérico",
