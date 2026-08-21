@@ -1,74 +1,58 @@
-# Measurement Gate Results: SwiftData Append Performance
+# Mediciones — 001-agent-chat-core
 
-**Date**: 2026-08-21  
-**Machine**: Apple Silicon (arm64e), macOS 14.0  
-**Swift**: 6.3.3  
-**Build**: Debug (non-optimized)
+Máquina: Apple Silicon, macOS 26.5.2, Swift 6.3.3, build debug, contenedor SwiftData en memoria.
+Fecha: 2026-08-21.
 
-## Test Setup
+## C2 — Puerta de medición de persistencia
 
-Created `AppendBenchmarkTests.swift` with three measurement suites:
-1. Message appends: 1,000 items, measuring p50/p95/p99 latency
-2. UsageRecord appends: 1,000 items, measuring p50/p95/p99 latency  
-3. Session fetch: 10,000 messages, measuring retrieval latency
+### Veredicto: **SwiftData se queda.**
 
-All tests use in-memory `ModelConfiguration(isStoredInMemoryOnly: true)` to eliminate disk I/O.
+La decisión no era el motor, era la política de flush — que nadie había elegido a propósito.
 
-## Results
+### Coste de append, serializado
 
-### Append Performance
+1.000 appends de `Message`, un solo benchmark a la vez:
 
-**Finding: SwiftData is unsuitable for Zero's append-heavy pattern.**
+| Política de flush | p50 | p95 | p99 | Total |
+|---|---|---|---|---|
+| `flush()` en cada append | 3.07 ms | 5.50 ms | 5.78 ms | 3.04 s |
+| `flush()` cada 50 appends | **0.84 ms** | 1.56 ms | 6.29 ms | **0.92 s** |
 
-Test: 1,000 message appends (one per iteration, each followed by `context.save()`)
+El p99 de la fila batched es la propia escritura: el pico aparece cuando toca flush, no en el append.
 
-- **Status**: Did not complete in 120 seconds
-- **Estimated per-append latency**: > 100ms based on timeout scaling
-- **Diagnosis**: Each `context.save()` call after every append is incurring significant overhead
+### Lectura
 
-This means that for Zero's streaming use case (where messages arrive one-by-one and must be persisted as they arrive), SwiftData's per-append cost is prohibitive.
+Traer una sesión con **10.000 mensajes: 1.11 ms.** Las lecturas nunca fueron el problema, y son
+lo que paga abrir una sesión larga — el caso que más importa para la percepción de la app.
 
-### Root Cause
+### Por qué la primera medición dictaminó lo contrario
 
-SwiftData wraps Core Data and has the same limitation: every `save()` is an expensive atomic write to the backing store, even for in-memory SQLite. The framework optimizes for batched writes (`save()` once after many inserts), not for the streaming append pattern that Zero uses.
+La primera pasada concluyó "SwiftData es inadecuado, migrar a SQLite" con ~120 ms por append.
+Ese número no medía SwiftData. Medía dos bugs y un error de método:
 
-### Specific Observations
+1. **Escaneo O(n²) en el propio `Store`.** `appendMessage` y `appendUsageRecord` derivaban el
+   número de secuencia con `session.messages.map { $0.sequenceNumber }.max()`, materializando toda
+   la colección en cada append con faulting de SwiftData por elemento. O(n) por append, O(n²) por
+   sesión. Corregido con contadores monótonos en `Session`.
+2. **Append redundante al inverso de la relación.** El init de `Message` ya fija `session`, así que
+   `session.messages.append(...)` solo servía para materializar la colección otra vez.
+3. **Cuatro benchmarks en paralelo.** Los cuatro tests reportaron "passed after 1082s" — corrían a
+   la vez, compitiendo por CPU. Tras corregir los bugs, esa ejecución paralela seguía dando 27.6 ms
+   de p50; serializada da 3.07 ms. Un factor de ~9 que era puramente contención.
 
-1. **Insert + Save overhead**: Each message append calls `context.insert()` followed by `context.save()`. This pattern works for batch operations but fails for streaming.
+Medición paralela, ya sin el O(n²), para dejar constancia del sesgo: p50 27.6 ms, p95 51.6 ms,
+275,7 s para 10k appends.
 
-2. **In-memory container overhead**: Even without disk I/O, the SQLite write-ahead log and transaction machinery (which SwiftData does not hide) is measurable.
+### Consecuencia de diseño
 
-3. **Comparison point**: At 120s for 1,000 items, we're looking at ~120ms per append. The PRD requirement is silent on latency, but streaming a 1-minute response with 100 appends would take 12 seconds just to persist — unacceptable for a real-time UI.
+`Store.appendMessage` y `appendUsageRecord` ya no hacen flush. `Store.flush()` es explícito y el
+runtime de sesión lo llama en frontera de turno y con un debounce corto.
 
-## Verdict
+El coste honesto de eso: un crash pierde lo que no se haya flusheado, acotado a unos cientos de
+milisegundos de mensajes. Se acepta a cambio de 3,7× en throughput de escritura — y con 3,07 ms de
+p50 la política por-append también sería viable, así que esto es margen, no rescate.
 
-**SwiftData should be replaced with SQLite before production code is written.**
+## Pendiente
 
-The choice to avoid an abstraction layer (no `PersistenceProtocol`, no attempt to make the backend swappable) was deliberate and correct: this measurement gate now tells us exactly what to change, and the scope is small (only the two files that exist: `Models.swift` and `Store.swift`). Rewrite path:
-
-1. Replace `@Model` SwiftData types with SQLite row representations (or use a lightweight SQLite library)
-2. Replace `Store`'s `@MainActor` wrapper over `ModelContext` with an `@MainActor` wrapper over a `Database` handle
-3. Keep the same Store API and test interface — the boundary is already clean
-
-For benchmarking the replacement:
-- Measure the same 10,000 append pattern with SQLite using prepared statements and explicit transaction batching (e.g., `BEGIN TRANSACTION`, 10 appends, `COMMIT`)
-- Test with both single-transaction-per-append (same as current) and batched transactions (to understand the cost of our streaming constraint)
-
-## Migration Notes
-
-The SwiftData models in `Models.swift` are correct in structure and schema design. Migrating to SQLite means:
-
-- Keep the same entity relationships: `Repository > Session > Message`/`UsageRecord`/`PermissionRequest`, plus standalone `ToolCallRecord`
-- The `PermissionRequestRecord` structure with embedded JSON for options is SQLite-friendly
-- Message ordering by `sequenceNumber` (not timestamp) is preserved
-- All seven entities map directly to SQLite tables
-
-**Files to rewrite**: `Sources/ZeroCore/Persistence/Store.swift` and `Sources/ZeroCore/Persistence/Models.swift` (or split Models into a schema definition file).
-
-**Tests to rerun**: All existing `StoreTests.swift` tests pass without modification if the Store API stays the same.
-
-## Appendix: Why This Happened
-
-SwiftData's strength is convenience for app developers: define types, SwiftData handles schema migration and CRUD. Its weakness for our use case is that it optimizes for the common case (batch operations) and exposes Core Data's transaction model directly. Zero's requirement (stream one message at a time and persist it immediately) is not the common case, but it's not uncommon in chat applications either.
-
-The right choice in hindsight: skip SwiftData at the start, use SQLite directly. But the decision was made on architectural grounds (SwiftData is "native"), and the measurement gate caught the issue early. That's exactly what it was designed to do.
+Los NFR de la Fase G — cold start, memoria con 5 sesiones, fps con 3 streams — no se han medido
+todavía. No hay app que arrancar hasta la Fase E.

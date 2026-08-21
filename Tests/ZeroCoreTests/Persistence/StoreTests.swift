@@ -69,15 +69,15 @@ struct StoreTests {
         #expect(fetched?.providerSessionId == "provider-session-abc")
 
         // Verify messages persisted
-        #expect(fetched?.messages.count == 2)
-        #expect(fetched?.messages[0].content == "Hello")
-        #expect(fetched?.messages[1].content == "Hi there")
+        #expect(fetched?.orderedMessages.count == 2)
+        #expect(fetched?.orderedMessages[0].content == "Hello")
+        #expect(fetched?.orderedMessages[1].content == "Hi there")
 
         // Verify tool call persisted
-        #expect(fetched?.messages[1].toolCalls.count == 1)
-        #expect(fetched?.messages[1].toolCalls[0].name == "bash")
-        #expect(fetched?.messages[1].toolCalls[0].status == "succeeded")
-        #expect(fetched?.messages[1].toolCalls[0].output == "test\n")
+        #expect(fetched?.orderedMessages[1].toolCalls.count == 1)
+        #expect(fetched?.orderedMessages[1].toolCalls[0].name == "bash")
+        #expect(fetched?.orderedMessages[1].toolCalls[0].status == "succeeded")
+        #expect(fetched?.orderedMessages[1].toolCalls[0].output == "test\n")
 
         // Verify usage persisted
         #expect(fetched?.usageRecords.count == 1)
@@ -106,7 +106,7 @@ struct StoreTests {
 
         // Fetch and verify ordering by sequenceNumber
         let fetched = try store.fetchSession(id: session.id)
-        #expect(fetched?.messages.count == 3)
+        #expect(fetched?.orderedMessages.count == 3)
 
         let sorted = fetched!.messages.sorted { $0.sequenceNumber < $1.sequenceNumber }
         #expect(sorted[0].content == "First")
@@ -348,9 +348,32 @@ struct StoreTests {
         )
 
         let fetched = try store.fetchSession(id: session.id)
-        let edit = fetched?.messages[0].toolCalls[0]
+        let edit = fetched?.orderedMessages[0].toolCalls[0]
         #expect(edit?.editPath == "/path/to/file.swift")
         #expect(edit?.editOldText == "let x = 1")
         #expect(edit?.editNewText == "let x = 2")
+    }
+
+    @Test("a flushed history still reads back whole")
+    func historySurvivesBatching() throws {
+        let store = try createTestStore()
+        let target = try store.createSession(
+            repository: nil,
+            provider: "claude-code",
+            model: "haiku",
+            worktreePath: "/tmp/wt",
+            branch: "zero/order"
+        )
+        for index in 0..<200 {
+            _ = try store.appendMessage(to: target, role: "assistant", content: "m\(index)")
+        }
+        try store.flush()
+        // The point of batching is speed, not fewer messages — and not a reordered transcript.
+        // Batching is exactly what broke ordering: a `save()` per append used to preserve insertion
+        // order by accident, so nothing asserted the guarantee until it was gone.
+        let ordered = target.orderedMessages
+        #expect(ordered.count == 200)
+        #expect(ordered.map { $0.sequenceNumber } == Array(0..<200))
+        #expect(ordered.map { $0.content } == (0..<200).map { "m\($0)" })
     }
 }

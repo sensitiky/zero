@@ -60,6 +60,21 @@ final class Session {
     @Relationship(deleteRule: .cascade, inverse: \PermissionRequestRecord.session)
     var permissionRequests: [PermissionRequestRecord] = []
 
+    /// The transcript in order.
+    ///
+    /// SwiftData relationships are unordered, so reading `messages` directly renders a conversation
+    /// in whatever order the store happens to return. That used to look correct only because a
+    /// `save()` on every append coincidentally preserved insertion order — a guarantee that
+    /// vanished the moment appends were batched. Always read a transcript through here.
+    var orderedMessages: [Message] {
+        messages.sorted { $0.sequenceNumber < $1.sequenceNumber }
+    }
+
+    /// Usage in order, for the same reason.
+    var orderedUsageRecords: [UsageRecord] {
+        usageRecords.sorted { $0.sequenceNumber < $1.sequenceNumber }
+    }
+
     init(
         id: UUID = UUID(),
         repository: Repository? = nil,
