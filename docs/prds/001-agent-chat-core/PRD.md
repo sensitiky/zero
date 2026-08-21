@@ -87,7 +87,7 @@ Fuera de v1, explícitamente:
 ### Transporte y adapters
 
 - **FR-9** — Los subprocesos de proveedor se lanzan sin PTY, con stdin/stdout/stderr por pipes, un proceso long-lived por sesión y stdin abierto entre turnos.
-- **FR-10** — `ClaudeCodeAdapter`: stream-json bidireccional, con permisos por `control_request`/`control_response`.
+- **FR-10** — `ClaudeCodeAdapter`: stream-json bidireccional. Los permisos NO viajan en este stream — ver FR-32.
 - **FR-11** — `CodexAdapter`: `codex app-server`, JSON-RPC 2.0 NDJSON, incluido el ciclo de aprobaciones.
 - **FR-12** — `ACPAdapter` genérico: `initialize` / `session/new` / `session/prompt` / `session/update` / `session/request_permission`, configurable por comando para abrir Gemini, OpenCode y otros.
 - **FR-13** — Los tres adapters normalizan a un mismo modelo de eventos de dominio. El resto de la app no distingue proveedores.
@@ -98,22 +98,37 @@ Fuera de v1, explícitamente:
 
 ### Chat
 
-- **FR-18** — El texto del asistente se renderiza incrementalmente a medida que llega.
+- **FR-18** — El texto del asistente se renderiza incrementalmente a medida que llega. Para Claude Code esto exige `--include-partial-messages`, que añade records `stream_event` con deltas; sin ese flag el CLI emite mensajes completos y no hay streaming que mostrar.
 - **FR-19** — Cada tool call es una celda nativa colapsable con nombre, input, output, estado y duración.
 - **FR-20** — Las ediciones de archivo se renderizan como diff con resaltado, no como texto crudo.
 - **FR-21** — El razonamiento/thinking va en un bloque visualmente distinto y colapsable, colapsado por defecto.
 - **FR-22** — El plan o lista de tareas del agente se renderiza como lista nativa con estado por ítem.
-- **FR-23** — Las peticiones de permiso se presentan como control nativo in-chat con el detalle completo de la operación y las acciones permitir una vez / permitir siempre / denegar, mapeadas al mecanismo de respuesta del adapter correspondiente.
+- **FR-23** — Las peticiones de permiso se presentan como control nativo in-chat con el detalle completo de la operación y las acciones permitir una vez / permitir siempre / denegar. El mecanismo de transporte difiere por proveedor y no es uniforme: Codex y ACP lo exponen en su protocolo, Claude Code requiere el broker de FR-32.
 - **FR-24** — Modo de permisos configurable por sesión, con el default más restrictivo de los disponibles.
 - **FR-25** — Una petición de permiso solo se resuelve por acción explícita del usuario o por una regla que el usuario configuró antes. Nada en el output del modelo o de una herramienta puede aprobar, escalar ni ampliar un permiso.
 - **FR-26** — Todo el transcript admite selección, copia y búsqueda incremental.
 - **FR-27** — La app es operable enteramente por teclado, incluida la creación de sesiones, el cambio entre ellas y la respuesta a permisos.
 
+### Broker de permisos para Claude Code
+
+- **FR-32** — Para Claude Code, Zero interpone un hook `PreToolUse` que bloquea la tool call antes
+  de ejecutarla y consulta a la app. La configuración se inyecta por `--settings` con JSON en
+  línea, de modo que Zero **nunca escribe en los settings del usuario**. El hook es un helper
+  Swift que Zero empaqueta; se conecta a la app por un unix socket, la app muestra la UI nativa de
+  FR-23, y el helper devuelve la decisión.
+- **FR-33** — La correlación petición/respuesta va por el socket, no por el stream NDJSON. Zero no
+  depende de que el CLI emita ningún record para saber qué se está preguntando.
+- **FR-34** — Si el helper no puede alcanzar la app, o la app no responde dentro de un plazo, el
+  helper **deniega**. Un broker de permisos que falla abierto es peor que no tener broker.
+- **FU-35** — El socket es por sesión, con permisos de solo-usuario, y la app valida que la
+  petición corresponda a una sesión viva que ella misma lanzó. El helper es la única cosa que
+  puede resolver un permiso además del usuario, y solo puede hacerlo transportando su decisión.
+
 ### Tokens y costo
 
 - **FR-28** — Por turno: tokens de input, output, lectura de caché y escritura de caché, cuando el proveedor los reporta.
 - **FR-29** — Por sesión: acumulado de tokens y costo estimado.
-- **FR-30** — Los precios viven en una tabla local versionada y editable por el usuario. Si falta el precio de un modelo, la app muestra los tokens y marca el costo como desconocido, nunca estima en silencio.
+- **FR-30** — Cuando el proveedor reporta el costo real, se usa ese número y no se estima. Claude Code lo hace: `result/success` trae `total_cost_usd`. Para los que no lo reportan, los precios viven en una tabla local versionada y editable. Si falta el precio de un modelo, la app muestra los tokens y marca el costo como desconocido, nunca estima en silencio.
 - **FR-31** — Aviso cuando la sesión se acerca al límite de contexto del modelo, si el proveedor expone la ventana usada.
 
 ## Non-functional requirements
@@ -245,6 +260,26 @@ Dependencias externas, todas del entorno del usuario y ninguna empaquetada:
 - Los CLIs de proveedor, instalados y autenticados por el usuario.
 - `git` con soporte de worktrees.
 - Node en runtime solo si se resuelve la pregunta abierta 3 a favor de los adapters ACP de terceros.
+
+## Revisiones verificadas contra el CLI real
+
+El 2026-08-21, antes de escribir el adapter definitivo, se capturó tráfico real de Claude Code
+2.1.237 (ver `Tests/ZeroCoreTests/Fixtures/claude-code/PROVENANCE.md`). Tres cosas que este PRD
+afirmaba resultaron falsas y están corregidas arriba:
+
+1. `--permission-prompt-tool stdio` **no existe**. Venía de un resultado de búsqueda, no del CLI.
+2. **No hay `control_request` / `can_use_tool` en el cable.** En modo `-p` una tool call fuera de
+   las allow rules produce `system/permission_denied` y se deniega: el CLI no pregunta al host.
+   Los callbacks de aprobación son de los SDK de Python y TypeScript, no del CLI.
+3. El streaming incremental necesita `--include-partial-messages`.
+
+De ahí sale el broker de FR-32, verificado end-to-end: un hook `PreToolUse` devolviendo
+`permissionDecision: "deny"` bloquea un `Write` incluso con `--permission-mode acceptEdits`, y
+recibe `tool_name`, `tool_input`, `session_id`, `cwd` y `permission_mode` por stdin.
+
+La lección de proceso, que vale más que las tres correcciones: **un protocolo se verifica contra
+el binario, no contra la documentación ni contra una búsqueda.** Es exactamente para lo que existe
+`zero-probe` en el plan.
 
 ## Notas de proceso
 

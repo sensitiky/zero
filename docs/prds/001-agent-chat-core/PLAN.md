@@ -48,6 +48,8 @@ turno completo contra el CLI real vía `zero-probe`.
 - [ ] **B7** `ProviderRegistry`: resolución del binario a ruta absoluta desde lista configurable, versión, estado de autenticación, y razón de indisponibilidad legible. Nunca hereda `PATH` sin validar. (FR-14, seguridad)
 - [ ] **B8** Cancelación de turno propagada al mecanismo de cada proveedor, sin matar el proceso. (FR-15)
 - [ ] **B9** Log de protocolo crudo por sesión, apagado por defecto, con redacción de credenciales. (FR-17, seguridad)
+- [ ] **B10** `PermissionBroker` + helper `zero-permission-hook`: unix socket por sesión, inyección de hook por `--settings`, fail-closed ante timeout o app inalcanzable. Es el único camino a FR-23 en Claude Code. (FR-32, FR-33, FR-34, FR-35)
+- [ ] **B11** Rehacer `ClaudeCodeDecoder` contra los fixtures **capturados**. La primera pasada se escribió contra formas inventadas (`type:"message"` con bloques, un evento `usage` de primer nivel, `turn_started`/`turn_ended`) que el CLI no emite. Las formas reales son `system/*` con subtipos, `assistant` envolviendo un mensaje de la Messages API, `user` con `tool_result`, `rate_limit_event` y `result`.
 
 ### Phase C — Persistencia y puerta de medición
 
