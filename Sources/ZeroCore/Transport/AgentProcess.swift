@@ -1,5 +1,16 @@
 import Foundation
 
+/// Ignoring `SIGPIPE` process-wide, once.
+///
+/// Writing to a pipe whose reader has already gone away — a provider CLI that exited, or one that
+/// never reads stdin at all — delivers `SIGPIPE`, and the default disposition for that signal is to
+/// terminate the process. Not the session: the whole app. `Process`/`Pipe` do not install a handler
+/// for this on their own, so a single dead agent could take down every other session with it.
+private let sigpipeIgnored: Bool = {
+    signal(SIGPIPE, SIG_IGN)
+    return true
+}()
+
 /// A long-lived provider CLI, spoken to over pipes.
 ///
 /// No PTY: this is the whole reason Zero can render native chat instead of embedding a terminal.
@@ -49,6 +60,7 @@ public actor AgentProcess {
     private var running = false
 
     public init(configuration: Configuration) {
+        _ = sigpipeIgnored
         self.configuration = configuration
         self.reader = LineReader(maxLineBytes: configuration.maxLineBytes)
         var captured: AsyncStream<Output>.Continuation!
@@ -129,7 +141,17 @@ public actor AgentProcess {
         guard running else { throw NotRunning() }
         var payload = record
         payload.append(UInt8(ascii: "\n"))
-        try stdinPipe.fileHandleForWriting.write(contentsOf: payload)
+        // `write(2)` returns EPIPE here rather than raising, now that SIGPIPE is ignored. Turned
+        // into a normal Swift error instead of a process-wide crash.
+        do {
+            try stdinPipe.fileHandleForWriting.write(contentsOf: payload)
+        } catch {
+            throw WriteFailed(underlying: error)
+        }
+    }
+
+    public struct WriteFailed: Error, Sendable {
+        public let underlying: any Error
     }
 
     /// Interrupts the turn in progress without ending the session.

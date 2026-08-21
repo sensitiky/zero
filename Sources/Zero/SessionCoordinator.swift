@@ -101,11 +101,17 @@ final class SessionCoordinator {
                     workspace: workspace
                 ),
                 store: store,
-                providerRegistry: registry
+                providerRegistry: registry,
+                // Without this the CLI launches with no PreToolUse hook installed, and a tool call
+                // gets no one to ask: it either falls back to asking in plain chat text, or is denied
+                // outright depending on the CLI's own default. Either way the native prompt this app
+                // exists to show never appears. That was a real bug, not a config gap.
+                permissionSetup: provider.id == ProviderDescriptor.claude.id
+                    ? .init(broker: broker, helperPath: Self.helperPath())
+                    : nil
             )
             let id = runtime.id
             runtimes[id] = runtime
-            try await broker.startSession(id: id.uuidString)
 
             // Branch comes from the store rather than the runtime: it is already persisted there,
             // and asking the actor for it would be an actor hop for a value we own.
@@ -221,6 +227,13 @@ final class SessionCoordinator {
                 continuation.resume(returning: resolution)
             }
         }
+    }
+
+    /// The permission hook helper, expected alongside this executable inside the app bundle.
+    private static func helperPath() -> String {
+        Bundle.main.bundleURL
+            .appendingPathComponent("Contents/MacOS/zero-permission-hook")
+            .path
     }
 
     /// First line of the prompt, trimmed. A session needs a name in the sidebar and the prompt is the

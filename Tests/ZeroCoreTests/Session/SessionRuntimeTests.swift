@@ -528,6 +528,16 @@ struct SessionRuntimeTests {
         launchArguments: []
     )
 
+    /// A stand-in for a provider CLI: prints its argv on one line, then keeps reading stdin like a
+    /// real long-lived agent would — so the initial prompt send has something alive to receive it.
+    private func makeArgvEchoingStub() throws -> URL {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("zero-argv-stub-\(UUID().uuidString.prefix(8)).sh")
+        try "#!/bin/sh\necho \"$@\"\ncat\n".write(to: path, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path.path)
+        return path
+    }
+
     private func makeRepository(at url: URL) throws {
         for arguments in [["init", "-q", url.path],
                           ["-C", url.path, "commit", "-q", "--allow-empty", "-m", "base"]] {
@@ -544,4 +554,85 @@ struct SessionRuntimeTests {
             git.waitUntilExit()
         }
     }
+
+    // MARK: - The permission hook actually gets installed
+
+    @Test("create() installs the permission hook before the process launches")
+    func createInstallsPermissionHook() async throws {
+        // The regression: the hook settings were never passed to configuration(), so a real session
+        // launched with no PreToolUse hook at all. A tool call had no one to ask over the socket —
+        // the CLI fell back to asking in plain chat text, and the native prompt this app exists to
+        // show never appeared.
+        let store = try createTestStore()
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try makeRepository(at: repo)
+
+        // `/bin/echo` prints exactly the argv it was launched with, and the decoder cannot parse that
+        // as JSON — it comes back as `.unrecognized(raw:)`, which is the real argv `create()` built,
+        // not a reconstruction of what it should have built.
+        let stub = try makeArgvEchoingStub()
+        defer { try? FileManager.default.removeItem(at: stub) }
+        let registry = ProviderRegistry(
+            resolveExecutable: { _, _ in stub },
+            getVersion: { _, _ in "2.1.237 (Claude Code)" }
+        )
+        let socketsDir = URL(fileURLWithPath: "/tmp/zs-\(UUID().uuidString.prefix(8))")
+        let broker = PermissionBroker(socketsDirectory: socketsDir) { _ in
+            .init(decision: .deny, origin: .userAction)
+        }
+
+        let runtime = try await SessionRuntime.create(
+            with: .init(repository: repo, provider: .claude, model: "m", prompt: "t"),
+            store: store,
+            providerRegistry: registry,
+            permissionSetup: .init(broker: broker, helperPath: "/path/to/zero-permission-hook")
+        )
+        await runtime.closeStdin()
+
+        var echoed = ""
+        for await event in runtime.transcript {
+            if case .unrecognized(let raw) = event { echoed += String(decoding: raw, as: UTF8.self) }
+        }
+        await runtime.waitUntilFinished()
+        await broker.stopAll()
+
+        #expect(echoed.contains("--settings"))
+        #expect(echoed.contains("PreToolUse"))
+        #expect(echoed.contains("zero-permission-hook"))
+    }
+
+    @Test("the session's socket exists before the process would need it")
+    func socketExistsBeforeProcessNeedsIt() async throws {
+        // Ordering matters: if the socket is opened after the CLI has already started, an early
+        // tool call finds nothing listening and the hook fails closed for a reason that has nothing
+        // to do with the user's actual answer.
+        let store = try createTestStore()
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try makeRepository(at: repo)
+
+        let stub = try makeArgvEchoingStub()
+        defer { try? FileManager.default.removeItem(at: stub) }
+        let registry = ProviderRegistry(
+            resolveExecutable: { _, _ in stub },
+            getVersion: { _, _ in "2.1.237 (Claude Code)" }
+        )
+        let socketsDir = URL(fileURLWithPath: "/tmp/zs-\(UUID().uuidString.prefix(8))")
+        let broker = PermissionBroker(socketsDirectory: socketsDir) { _ in
+            .init(decision: .allow, origin: .userAction)
+        }
+
+        let runtime = try await SessionRuntime.create(
+            with: .init(repository: repo, provider: .claude, model: "m", prompt: "t"),
+            store: store,
+            providerRegistry: registry,
+            permissionSetup: .init(broker: broker, helperPath: "/path/to/zero-permission-hook")
+        )
+        await runtime.closeStdin()
+        for await _ in runtime.transcript {}
+        await runtime.waitUntilFinished()
+        await broker.stopAll()
+    }
+
 }

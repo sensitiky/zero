@@ -73,6 +73,7 @@ public final class Store {
     // MARK: - Session
 
     public func createSession(
+        id: UUID = UUID(),
         repository: Repository?,
         provider: String,
         model: String,
@@ -81,6 +82,7 @@ public final class Store {
         providerSessionId: String? = nil
     ) throws -> Session {
         let session = Session(
+            id: id,
             repository: repository,
             provider: provider,
             model: model,

@@ -125,4 +125,32 @@ struct AgentProcessTests {
             try await process.send(Data("hello".utf8))
         }
     }
+
+    @Test("writing to a process that already exited fails instead of crashing the app")
+    func writeAfterExitFailsCleanly() async throws {
+        // /bin/echo never reads stdin and exits almost immediately. Writing to its stdin pipe after
+        // that used to deliver SIGPIPE, whose default disposition terminates the whole process — not
+        // just this session. Regression: a provider CLI dying mid-write took every other session
+        // down with it.
+        let process = AgentProcess(
+            configuration: AgentProcess.Configuration(
+                executable: URL(fileURLWithPath: "/bin/echo"),
+                arguments: ["hello"],
+                environment: ["PATH": "/usr/bin:/bin"],
+                workingDirectory: URL(fileURLWithPath: "/tmp")
+            )
+        )
+        try await process.start()
+
+        for await item in process.output {
+            if case .exited = item { break }
+        }
+
+        await #expect(throws: (any Error).self) {
+            try await process.send(Data("too late".utf8))
+        }
+        // Reaching this line at all is the assertion that matters: SIGPIPE did not take the process
+        // down.
+    }
+
 }

@@ -146,6 +146,21 @@ public actor SessionRuntime {
         currentState = .idle
     }
 
+    /// What a session needs to install the Claude Code permission hook.
+    ///
+    /// Optional, and absent by default, because not every provider or every test wants a live
+    /// broker. When present, `create` opens the session's socket before the process launches and
+    /// passes its path through `--settings`, so a tool call is gated from the very first turn.
+    public struct PermissionSetup: Sendable {
+        public let broker: PermissionBroker
+        public let helperPath: String
+
+        public init(broker: PermissionBroker, helperPath: String) {
+            self.broker = broker
+            self.helperPath = helperPath
+        }
+    }
+
     // MARK: - Creation
 
     /// Creates a new session, checks the repository, creates a worktree, and starts the process.
@@ -156,7 +171,8 @@ public actor SessionRuntime {
     public static func create(
         with config: CreationConfig,
         store: Store,
-        providerRegistry: ProviderRegistry
+        providerRegistry: ProviderRegistry,
+        permissionSetup: PermissionSetup? = nil
     ) async throws -> SessionRuntime {
         // Initialize git service for the repository
         let gitService: GitService
@@ -190,12 +206,37 @@ public actor SessionRuntime {
             }
         }
 
+        // The session id is generated here, before the process launches, because the permission
+        // hook's socket is keyed by this id — the broker has to be listening on it before the CLI
+        // that will connect to it ever starts.
+        let sessionID = UUID()
+
+        var extraArguments: [String] = []
+        if let permissionSetup {
+            // Not swallowed: FR-23/FR-32 make the native permission prompt a product guarantee for
+            // this provider, not a nice-to-have. A session that silently launched without it would
+            // reproduce, in a new disguise, the exact bug this whole mechanism exists to prevent —
+            // the CLI asking in plain chat text with no one able to explain why.
+            do {
+                let socketPath = try await permissionSetup.broker.startSession(id: sessionID.uuidString)
+                extraArguments = [
+                    "--settings",
+                    HookSettings.json(helperPath: permissionSetup.helperPath, socketPath: socketPath),
+                ]
+            } catch {
+                throw CreationError.providerError(
+                    "could not install the permission hook: \(error)"
+                )
+            }
+        }
+
         // Build process configuration first (before MainActor work)
         let processConfig: AgentProcess.Configuration
         do {
             processConfig = try providerRegistry.configuration(
                 for: config.provider,
-                workingDirectory: worktreePath
+                workingDirectory: worktreePath,
+                extraArguments: extraArguments
             )
         } catch {
             // Rolls back only a worktree we just created and that never held anything. Never the
@@ -229,10 +270,10 @@ public actor SessionRuntime {
             throw CreationError.processError(String(describing: error))
         }
 
-        // Do all session creation and runtime setup on MainActor
-        let sessionID = try await MainActor.run {
-            // Create the session
+        // Persisted under the same id the hook socket was opened for.
+        try await MainActor.run {
             let session = try store.createSession(
+                id: sessionID,
                 repository: nil,  // repository relationship optional for now
                 provider: config.provider.id,
                 model: config.model,
@@ -240,10 +281,7 @@ public actor SessionRuntime {
                 branch: branchName,
                 providerSessionId: config.resumeSessionId
             )
-
-            // Mark session as started
             try store.markSessionStarted(session)
-            return session.id
         }
 
         // Create the runtime with only the session ID
@@ -437,6 +475,14 @@ public actor SessionRuntime {
         } else {
             await process.interrupt()
         }
+    }
+
+    /// Closes the process's stdin, which is how a provider ends the conversation politely.
+    ///
+    /// Exposed for tests driving a stand-in process that stays open reading stdin like a real CLI
+    /// would; production code ends a session by letting the runtime finish naturally.
+    public func closeStdin() async {
+        await process.closeInput()
     }
 
     /// Waits for the session to finish. For tests and for orderly shutdown.
