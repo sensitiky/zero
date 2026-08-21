@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "ZeroCore", targets: ["ZeroCore"]),
         .executable(name: "zero-probe", targets: ["zero-probe"]),
+        .executable(name: "zero-permission-hook", targets: ["zero-permission-hook"]),
     ],
     targets: [
         .target(
@@ -15,6 +16,11 @@ let package = Package(
         ),
         .executableTarget(
             name: "zero-probe",
+            dependencies: ["ZeroCore"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .executableTarget(
+            name: "zero-permission-hook",
             dependencies: ["ZeroCore"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
