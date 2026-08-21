@@ -1,0 +1,54 @@
+name: release
+
+# Runs on a self-hosted macOS runner (registered by hand, see
+# docs/prds/002-ci-cd-releases/TESTING.md) because the app's deployment target is macOS 26.0 —
+# a GitHub-hosted runner image isn't guaranteed to carry that SDK yet.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (no leading v) — dry run, does not publish a release"
+        required: true
+        default: "0.0.0-test"
+
+jobs:
+  release:
+    runs-on: [self-hosted, macOS]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Test
+        run: swift test
+
+      - name: Build Zero.app
+        env:
+          ZERO_VERSION: ${{ steps.version.outputs.version }}
+        run: Scripts/make-app.sh release
+
+      - name: Package DMG
+        id: dmg
+        run: |
+          DMG="build/Zero-${{ steps.version.outputs.version }}.dmg"
+          rm -f "$DMG"
+          hdiutil create -volname Zero -srcfolder build/Zero.app -ov -format UDZO "$DMG"
+          echo "path=$DMG" >> "$GITHUB_OUTPUT"
+
+      # workflow_dispatch is for dry-running the build+package steps above without touching
+      # tags/releases — see Gate 3 in TESTING.md. Only an actual tag push publishes.
+      - name: Publish release
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${{ github.ref_name }}" "${{ steps.dmg.outputs.path }}" --generate-notes
