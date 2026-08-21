@@ -23,7 +23,7 @@ struct ConversationPane: View {
                         coordinator.answerPermission(sessionID: session.id, option: option)
                     }
                 }
-                composer(sessionTitle: session.title, sessionID: session.id)
+                composer(session: session)
             }
             .zeroSurface(scheme)
         } else {
@@ -39,20 +39,24 @@ struct ConversationPane: View {
     /// One raised, rounded surface holding the field and its controls, rather than a bare row with a
     /// button beside it. The controls sit inside the box because they act on what is in it — putting
     /// them outside makes the box a form field, and this is the main thing on the screen.
-    private func composer(sessionTitle: String, sessionID: UUID) -> some View {
+    private func composer(session: AppModel.SessionSnapshot) -> some View {
         VStack(spacing: 0) {
-            HStack(alignment: .bottom, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
                 TextField("Reply", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.body)
                     .lineLimit(1...10)
                     .focused($composerFocused)
-                    .accessibilityLabel("Message to \(sessionTitle)")
+                    .accessibilityLabel("Message to \(session.title)")
                     .onSubmit(send)
+
+                // Usage sits immediately left of the send control — the two things that live at
+                // the end of every message: what it costs, and the button that sends it.
+                UsageIndicator(usage: session.usage)
 
                 if model.selectedSession?.state == .running {
                     circleButton(systemImage: "stop.fill", label: "Stop") {
-                        Task { await coordinator.cancelTurn(sessionID) }
+                        Task { await coordinator.cancelTurn(session.id) }
                     }
                     .keyboardShortcut(".", modifiers: .command)
                     .help("Interrupt the turn without ending the session")
@@ -103,6 +107,6 @@ struct ConversationPane: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, let id = model.selectedSessionID else { return }
         draft = ""
-        Task { await coordinator.send(text, to: id) }
+Task { await coordinator.send(text, to: id) }
     }
 }

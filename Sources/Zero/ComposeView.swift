@@ -22,33 +22,41 @@ struct ComposeView: View {
                 Text("What should be built in \(project.name)?")
                     .font(.title2.weight(.medium))
 
-                TextField("Describe the task", text: $draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.body)
-                    .lineLimit(3...10)
-                    .focused($focused)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    // The same surface as the reply composer: starting a session and continuing one
-                    // are the same act, and two different boxes would say otherwise.
-                    .background(
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .fill(Theme.foreground(scheme).opacity(0.055))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .stroke(Theme.foreground(scheme).opacity(focused ? 0.32 : 0.14), lineWidth: 1)
-                    )
-                    .animation(.easeOut(duration: 0.12), value: focused)
+                // Same box, same trailing pair — usage then send — as the reply composer below.
+                // Starting a session and continuing one are the same act.
+                HStack(alignment: .center, spacing: 10) {
+                    TextField("Describe the task", text: $draft, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.body)
+                        .lineLimit(1...10)
+                        .focused($focused)
+                        .onSubmit(start)
+
+                    UsageIndicator(usage: Usage())
+
+                    circleButton(systemImage: "arrow.up", label: starting ? "Starting…" : "Start") {
+                        start()
+                    }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!canStart)
+                }
+                .padding(.leading, 16)
+                .padding(.trailing, 10)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(Theme.foreground(scheme).opacity(0.055))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(Theme.foreground(scheme).opacity(focused ? 0.32 : 0.14), lineWidth: 1)
+                )
+                .animation(.easeOut(duration: 0.12), value: focused)
 
                 HStack(spacing: 10) {
                     ProviderModelPicker(model: model, coordinator: coordinator)
                     WorkspacePicker(model: model)
                     Spacer(minLength: 0)
-                    Button(starting ? "Starting…" : "Start") { start() }
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut(.return, modifiers: .command)
-                        .disabled(!canStart)
                 }
 
                 if let reason = coordinator.unavailableReason(for: model.draftProvider) {
@@ -73,6 +81,24 @@ struct ComposeView: View {
             && !starting
             && coordinator.isAvailable(model.draftProvider)
             && !model.draftModel.isEmpty
+    }
+
+    /// Matches `ConversationPane.circleButton`: the same round, filled control everywhere a
+    /// message gets sent.
+    private func circleButton(
+        systemImage: String,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Theme.background(scheme))
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(Theme.foreground(scheme)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     private func start() {

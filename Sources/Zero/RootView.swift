@@ -30,13 +30,7 @@ struct RootView: View {
             // "an error occurred" throws away the only thing that helps.
             Text(coordinator.lastError ?? "")
         }
-        .toolbar {
-            if let session = model.selectedSession {
-                ToolbarItem(placement: .primaryAction) {
-                    UsageIndicator(usage: session.usage)
-                }
-            }
-        }
+
     }
 }
 
