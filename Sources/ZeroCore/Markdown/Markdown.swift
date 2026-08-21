@@ -16,6 +16,18 @@ public enum Markdown {
         text.contains(where: { "*_`#[]".contains($0) })
     }
 
+    /// Strips a leading heading marker (`# `, `## `, …) from a single line.
+    ///
+    /// For a sidebar title or a one-line summary: those contexts have no room to render heading
+    /// typography, but showing the literal `#` characters is wrong too — the marker is semantic
+    /// markup, not the message. `inline(_:)` alone cannot fix this, because `#` is block-level
+    /// syntax and `.inlineOnlyPreservingWhitespace` deliberately does not interpret block markup at
+    /// all, by design, for exactly the same reason it does not turn a list marker into a bullet.
+    public static func strippingHeadingMarker(_ line: String) -> String {
+        guard headingLevel(of: line) != nil else { return line }
+        return String(line.drop(while: { $0 == "#" })).trimmingCharacters(in: .whitespaces)
+    }
+
     /// Parses to `AttributedString`, never throwing outward: malformed markdown falls back to the
     /// text verbatim rather than showing nothing.
     ///

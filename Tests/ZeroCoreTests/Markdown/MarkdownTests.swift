@@ -111,4 +111,23 @@ struct MarkdownTests {
         let text = "nothing special here"
         #expect(String(Markdown.inline(text).characters) == text)
     }
+
+    // MARK: - Sidebar single-line contexts: headings have nowhere to render as a block
+
+    @Test("a leading heading marker is stripped for single-line contexts")
+    func headingMarkerIsStripped() {
+        #expect(Markdown.strippingHeadingMarker("# Test") == "Test")
+        #expect(Markdown.strippingHeadingMarker("### Deep heading") == "Deep heading")
+    }
+
+    @Test("text with no heading marker passes through unchanged")
+    func noHeadingMarkerPassesThrough() {
+        #expect(Markdown.strippingHeadingMarker("Fix bug #42") == "Fix bug #42")
+        #expect(Markdown.strippingHeadingMarker("plain text") == "plain text")
+    }
+
+    @Test("a bare hash with no following space is not treated as a heading")
+    func bareHashIsNotAHeading() {
+        #expect(Markdown.strippingHeadingMarker("#nospace") == "#nospace")
+    }
 }

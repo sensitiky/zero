@@ -22,7 +22,10 @@ enum PreviewData {
         model.projects = [AppModel.Project(url: repo), AppModel.Project(url: apiRepo)]
 
         let busy = makeBusySession(in: repo)
-        let idle = makeIdleSession(in: repo, title: "Fix flaky checkout test", branch: "zero/flaky-checkout-9f2")
+        // Titled from a prompt that starts with a markdown heading, on purpose: demonstrates that
+        // the sidebar strips "# " rather than showing it literally — the bug this session type
+        // exists to catch, per the process rule that every UI fix shows up here too.
+        let idle = makeIdleSession(in: repo, title: "# Fix flaky checkout test", branch: "zero/flaky-checkout-9f2")
         let waiting = makeWaitingSession(in: apiRepo)
         let finished = makeFinishedSession(in: apiRepo)
 

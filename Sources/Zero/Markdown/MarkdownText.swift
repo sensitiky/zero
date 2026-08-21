@@ -39,7 +39,14 @@ struct MarkdownText: View {
             }
         }
         .task(id: text) {
-            attributed = Markdown.mightContainSyntax(text) ? styledInline(text) : nil
+            guard Markdown.mightContainSyntax(text) else {
+                attributed = nil
+                return
+            }
+            // A heading marker is block-level syntax with nowhere to render as a distinct block
+            // in a one-line title or summary — strip it before inline parsing, or it shows up as a
+            // literal "# " that the reader never asked to see.
+            attributed = styledInline(Markdown.strippingHeadingMarker(text))
         }
     }
 }
