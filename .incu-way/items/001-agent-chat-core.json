@@ -5,11 +5,12 @@
   "branch": "feat/001-agent-chat-core",
   "isolation": "current-checkout-branch",
   "phase": "implementation",
-  "nextStep": "B4/B5/B6/B7 + C1/C2 + D1 en paralelo via subagentes",
+  "nextStep": "C2: remedir SwiftData sin el O(n2); luego B8, C3, C4, D2-D5",
   "documents": {
     "docs/prds/001-agent-chat-core/PRD.md": "approved",
     "docs/prds/001-agent-chat-core/PLAN.md": "approved",
-    "docs/prds/001-agent-chat-core/TESTING.md": "not-started"
+    "docs/prds/001-agent-chat-core/TESTING.md": "not-started",
+    "docs/prds/001-agent-chat-core/MEASUREMENTS.md": "in-progress"
   },
   "gates": [
     {
@@ -77,22 +78,22 @@
     {
       "id": "B4",
       "title": "ClaudeCodeAdapter: stream-json + correlacion control_request",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "B5",
       "title": "CodexAdapter: app-server JSON-RPC",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "B6",
       "title": "ACPAdapter: initialize/session.new/prompt/update",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "B7",
       "title": "ProviderRegistry: resolucion, version, auth",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "B8",
@@ -102,17 +103,27 @@
     {
       "id": "B9",
       "title": "Log de protocolo crudo con redaccion",
-      "status": "todo"
+      "status": "done"
+    },
+    {
+      "id": "B10",
+      "title": "PermissionBroker + helper: hook PreToolUse, socket por sesion, fail-closed",
+      "status": "done"
+    },
+    {
+      "id": "B11",
+      "title": "Rehacer ClaudeCodeDecoder contra fixtures capturados",
+      "status": "done"
     },
     {
       "id": "C1",
       "title": "Modelos SwiftData",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "C2",
       "title": "Puerta de medicion: benchmark de append 10k+10k",
-      "status": "todo"
+      "status": "in-progress"
     },
     {
       "id": "C3",
@@ -127,7 +138,7 @@
     {
       "id": "D1",
       "title": "GitService: worktrees, naming, repo sucio, validacion de ruta",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "D2",
@@ -229,7 +240,7 @@
     "auto-update": "descartado mientras el repo siga privado",
     "adapter-transport": "stdio, sin abstracción de transporte"
   },
-  "notes": "STATE.md canónico de incu-board no presente en la máquina; esquema derivado de la tabla del skill incu-way-development.",
+  "notes": "STATE.md canónico de incu-board no presente en la máquina; esquema derivado de la tabla del skill incu-way-development. | Revision: B4 descartado (formas de cable inventadas), B10 llego sin transporte y con snake_case que anulaba el control de permisos, C2 midio su propio O(n2). Regla nueva: cada tarea necesita un test contra la cosa real.",
   "updatedAt": "2026-08-20",
   "toolchain": {
     "macos": "26.5.2",
