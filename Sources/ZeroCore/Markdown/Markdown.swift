@@ -10,6 +10,12 @@ public enum Markdown {
 
     /// Inline styling only: bold, italic, code spans, strikethrough, links. Never throws outward —
     /// malformed markdown falls back to the text verbatim rather than showing nothing.
+    /// Cheap pre-check so a caller can skip parsing entirely for plain text — the common case for a
+    /// tool notice, a session title, or a reply with no formatting at all.
+    public static func mightContainSyntax(_ text: String) -> Bool {
+        text.contains(where: { "*_`#[]".contains($0) })
+    }
+
     /// Parses to `AttributedString`, never throwing outward: malformed markdown falls back to the
     /// text verbatim rather than showing nothing.
     ///
