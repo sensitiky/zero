@@ -12,10 +12,34 @@ import ZeroCore
 @MainActor
 @Observable
 final class AppModel {
+    /// A repository the user has opened. Its path is its identity — two entries for the same
+    /// checkout would split one project's sessions across two groups.
+    struct Project: Identifiable, Hashable, Sendable {
+        let id: URL
+        var name: String
+
+        init(url: URL) {
+            self.id = url
+            self.name = url.lastPathComponent
+        }
+    }
+
+    /// What the sidebar has selected. A project and a session are different destinations: a project
+    /// opens the "what should be built" state, a session opens its transcript.
+    enum Selection: Hashable, Sendable {
+        case project(URL)
+        case session(UUID)
+    }
+
     /// A session as the UI sees it. No model objects, no actors, nothing that must be awaited.
     struct SessionSnapshot: Identifiable, Sendable {
         let id: UUID
+        let projectID: URL
         var title: String
+        /// The dim second line: what this session is actually about. Starts as the opening prompt and
+        /// follows the latest assistant text, because "what it is doing now" is more useful than
+        /// "what it was asked an hour ago".
+        var summary: String
         var provider: String
         var model: String
         var branch: String
@@ -47,19 +71,74 @@ final class AppModel {
         }
     }
 
+    var projects: [Project] = []
     var sessions: [SessionSnapshot] = []
-    var selectedSessionID: UUID?
+    var selection: Selection?
     var inspectorVisible = true
     var composerText = ""
+    /// Filters the sidebar by session title and summary only.
+    ///
+    /// Deliberately not a full-text search over transcripts: those are long, and a search that
+    /// matches every session because the word appears in some tool output is a search that tells you
+    /// nothing. Searching the transcript is a different feature with a different UI.
+    var searchText = ""
+    /// What the next session in a project will use, remembered between sessions.
+    var draftProvider = ProviderDescriptor.claude.id
+    var draftModel = ProviderDescriptor.claude.knownModels.first ?? ""
+
+    var selectedSessionID: UUID? {
+        if case .session(let id) = selection { return id }
+        return nil
+    }
+
+    var selectedProjectID: URL? {
+        switch selection {
+        case .project(let url): return url
+        case .session(let id): return sessions.first { $0.id == id }?.projectID
+        case nil: return nil
+        }
+    }
 
     var selectedSession: SessionSnapshot? {
         guard let selectedSessionID else { return nil }
         return sessions.first { $0.id == selectedSessionID }
     }
 
+    var selectedProject: Project? {
+        guard let selectedProjectID else { return nil }
+        return projects.first { $0.id == selectedProjectID }
+    }
+
+    /// Sessions of a project, newest first, filtered by the search field.
+    func sessions(in project: Project) -> [SessionSnapshot] {
+        let all = sessions.filter { $0.projectID == project.id }
+        guard !searchText.isEmpty else { return all }
+        let needle = searchText.lowercased()
+        return all.filter {
+            $0.title.lowercased().contains(needle) || $0.summary.lowercased().contains(needle)
+        }
+    }
+
+    /// Projects worth showing. While searching, a project with no matching session is hidden rather
+    /// than shown empty — an empty group is noise in a list you are filtering.
+    var visibleProjects: [Project] {
+        guard !searchText.isEmpty else { return projects }
+        return projects.filter { !sessions(in: $0).isEmpty }
+    }
+
     /// Sessions waiting on the user, for the sidebar's badge.
     var sessionsAwaitingUser: [SessionSnapshot] {
         sessions.filter { $0.pendingPermission != nil }
+    }
+
+    func addProject(_ url: URL) {
+        let project = Project(url: url)
+        guard !projects.contains(where: { $0.id == project.id }) else {
+            selection = .project(project.id)
+            return
+        }
+        projects.append(project)
+        selection = .project(project.id)
     }
 
     // MARK: - Mutation
@@ -112,6 +191,18 @@ final class AppModel {
         } else {
             sessions[index].events.append(.assistantText(id: UUID(), text: text))
         }
+        if case .assistantText(_, let full) = sessions[index].events.last {
+            sessions[index].summary = Self.condensed(full)
+        }
+    }
+
+    /// One line, no newlines, bounded. The sidebar has one line of room and a summary that wraps to
+    /// four turns the list into a wall.
+    static func condensed(_ text: String, limit: Int = 90) -> String {
+        let flat = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return flat.count > limit ? String(flat.prefix(limit)) + "…" : flat
     }
 
     /// Replaces a tool call in place when its status changes, so one call stays one row.

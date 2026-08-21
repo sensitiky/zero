@@ -1,19 +1,17 @@
 import SwiftUI
 import ZeroCore
 
-/// The shell: sessions on the left, the active conversation in the middle, its accounting on the
-/// right. Three panes because those are the three questions — which session, what is it saying, what
-/// is it costing.
+/// The shell: projects and their sessions on the left, the active conversation in the middle, its
+/// accounting on the right.
 struct RootView: View {
     @Bindable var model: AppModel
     @Bindable var coordinator: SessionCoordinator
     @Environment(\.colorScheme) private var scheme
-    @State private var showingNewSession = false
 
     var body: some View {
         NavigationSplitView {
-            SessionSidebar(model: model)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 340)
+            SessionSidebar(model: model, coordinator: coordinator)
+                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 380)
         } detail: {
             HStack(spacing: 0) {
                 ConversationPane(model: model, coordinator: coordinator)
@@ -26,9 +24,6 @@ struct RootView: View {
         }
         .zeroSurface(scheme)
         .onAppear { StartupClock.reportFirstFrame() }
-        .sheet(isPresented: $showingNewSession) {
-            NewSessionSheet(coordinator: coordinator)
-        }
         .alert(
             "Something went wrong",
             isPresented: .init(
@@ -43,28 +38,23 @@ struct RootView: View {
             Text(coordinator.lastError ?? "")
         }
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    showingNewSession = true
-                } label: {
-                    Label("New Session", systemImage: "plus")
-                }
-                .keyboardShortcut("n", modifiers: .command)
-                .help("Start a session in its own worktree")
-            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     model.inspectorVisible.toggle()
                 } label: {
                     Label("Inspector", systemImage: "sidebar.trailing")
                 }
-                .help("Toggle the inspector")
+                // Disabled rather than hidden when there is no session. It used to render always and
+                // do nothing without one, which reads as a broken button next to the working sidebar
+                // toggle — and there were two things that looked like sidebar controls.
+                .disabled(model.selectedSession == nil)
+                .help(model.selectedSession == nil ? "Select a session first" : "Toggle the inspector")
             }
         }
     }
 }
 
-/// Placeholder shown when nothing is selected, and when there is nothing to select.
+/// Shown when nothing is selected.
 struct EmptyStatePane: View {
     let title: String
     let detail: String

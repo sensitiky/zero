@@ -10,7 +10,9 @@ struct ConversationPane: View {
     @FocusState private var composerFocused: Bool
 
     var body: some View {
-        if let session = model.selectedSession {
+        if let project = model.selectedProject, model.selectedSession == nil {
+            ComposeView(project: project, model: model, coordinator: coordinator)
+        } else if let session = model.selectedSession {
             VStack(spacing: 0) {
                 TranscriptView(entries: session.events)
                 if let request = session.pendingPermission {
@@ -25,8 +27,8 @@ struct ConversationPane: View {
             .zeroSurface(scheme)
         } else {
             EmptyStatePane(
-                title: "No session selected",
-                detail: "Describe a task and pick an agent. Each session gets its own git worktree."
+                title: "No project open",
+                detail: "Add a repository from the sidebar. Each session gets its own git worktree inside it."
             )
         }
     }

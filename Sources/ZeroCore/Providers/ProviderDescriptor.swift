@@ -28,6 +28,13 @@ public struct ProviderDescriptor: Sendable {
     /// whether to check authentication status in addition to executable and version.
     public let requiresAuthentication: Bool
 
+    /// Models offered in the picker.
+    ///
+    /// Only listed where the ids are known first-hand — Claude Code's come from captured traffic.
+    /// An empty list means the picker falls back to a free-text field rather than offering names
+    /// that were guessed: a menu of plausible-looking wrong ids is worse than typing the right one.
+    public let knownModels: [String]
+
     /// A closure to check authentication status. Called only if `requiresAuthentication` is true.
     /// Returns a human-readable error string if auth is missing or invalid, nil if authenticated.
     public let checkAuthentication: (@Sendable () throws -> String?)
@@ -40,6 +47,7 @@ public struct ProviderDescriptor: Sendable {
         minimumVersion: String,
         launchArguments: [String],
         requiresAuthentication: Bool = false,
+        knownModels: [String] = [],
         checkAuthentication: @escaping (@Sendable () throws -> String?) = { nil }
     ) {
         self.id = id
@@ -49,6 +57,7 @@ public struct ProviderDescriptor: Sendable {
         self.minimumVersion = minimumVersion
         self.launchArguments = launchArguments
         self.requiresAuthentication = requiresAuthentication
+        self.knownModels = knownModels
         self.checkAuthentication = checkAuthentication
     }
 
@@ -70,7 +79,8 @@ public struct ProviderDescriptor: Sendable {
             "--input-format", "stream-json",
             "--verbose",
         ],
-        requiresAuthentication: true
+        requiresAuthentication: true,
+        knownModels: ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"]
     )
 
     public static let codex = ProviderDescriptor(

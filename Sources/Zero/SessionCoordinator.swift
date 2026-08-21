@@ -35,6 +35,32 @@ final class SessionCoordinator {
         }
     }
 
+    func descriptor(for id: String) -> ProviderDescriptor? {
+        availableProviders.first { $0.descriptor.id == id }?.descriptor
+    }
+
+    func isAvailable(_ id: String) -> Bool {
+        guard let entry = availableProviders.first(where: { $0.descriptor.id == id }) else { return false }
+        if case .available = entry.status { return true }
+        return false
+    }
+
+    /// Why a provider cannot be used, in the words the registry gave us.
+    ///
+    /// An unusable provider stays visible with its reason rather than being hidden: hiding it turns
+    /// a fixable setup problem into a mystery.
+    func unavailableReason(for id: String) -> String? {
+        guard let entry = availableProviders.first(where: { $0.descriptor.id == id }) else { return nil }
+        switch entry.status {
+        case .available:
+            return nil
+        case .notInstalled(let reason), .notAuthenticated(let reason), .resolutionFailed(let reason):
+            return reason
+        case .versionTooOld(let installed, let minimum, _):
+            return "Installed \(installed); Zero needs \(minimum) or newer."
+        }
+    }
+
     // MARK: - Starting a session
 
     /// Asks for a repository. A folder picker rather than a text field: the path has to be a real
@@ -73,14 +99,16 @@ final class SessionCoordinator {
             model.sessions.append(
                 AppModel.SessionSnapshot(
                     id: id,
+                    projectID: repository,
                     title: Self.title(from: prompt),
+                    summary: AppModel.condensed(prompt),
                     provider: provider.displayName,
                     model: modelName,
                     branch: branch,
                     state: .running
                 )
             )
-            model.selectedSessionID = id
+            model.selection = .session(id)
             pump(runtime, id: id)
         } catch let error as SessionRuntime.CreationError {
             lastError = error.description
