@@ -124,9 +124,55 @@ public actor GitService {
     /// - parameter worktreePath: Path to the worktree to remove.
     /// - parameter removeBranch: If `true`, also deletes the worktree's branch. Default is `false`.
     /// - throws: ``GitError`` if the operation fails or the path is invalid.
-    public func removeWorktree(
+    /// What a teardown may delete.
+    ///
+    /// There is no default. FR-5 says nothing is deleted without confirmation, and a defaulted
+    /// boolean is how "confirmation" quietly becomes "whatever the parameter happened to be" —
+    /// the caller has to name the destructive choice for it to happen.
+    public struct TeardownAuthorization: Sendable, Equatable {
+        public let deletesWorktree: Bool
+        public let deletesBranch: Bool
+
+        /// Closes the session and touches nothing on disk.
+        public static let keepEverything = TeardownAuthorization(deletesWorktree: false, deletesBranch: false)
+        /// Removes the worktree, keeps the branch and therefore the work.
+        public static let worktreeOnly = TeardownAuthorization(deletesWorktree: true, deletesBranch: false)
+        /// Removes both. This throws the work away.
+        public static let worktreeAndBranch = TeardownAuthorization(deletesWorktree: true, deletesBranch: true)
+
+        private init(deletesWorktree: Bool, deletesBranch: Bool) {
+            self.deletesWorktree = deletesWorktree
+            self.deletesBranch = deletesBranch
+        }
+    }
+
+    /// What a teardown actually did, so a caller can report it rather than assume it.
+    public struct TeardownOutcome: Sendable, Equatable {
+        public let removedWorktree: Bool
+        public let removedBranch: Bool
+    }
+
+    /// Tears a session's worktree down, deleting only what it was authorized to delete.
+    @discardableResult
+    public func tearDown(
+        worktreeAt worktreePath: URL,
+        branch: String?,
+        authorization: TeardownAuthorization
+    ) throws -> TeardownOutcome {
+        guard authorization.deletesWorktree else {
+            return TeardownOutcome(removedWorktree: false, removedBranch: false)
+        }
+        try removeWorktree(at: worktreePath, removeBranch: authorization.deletesBranch, branch: branch)
+        return TeardownOutcome(
+            removedWorktree: true,
+            removedBranch: authorization.deletesBranch && branch != nil
+        )
+    }
+
+    private func removeWorktree(
         at worktreePath: URL,
-        removeBranch: Bool = false
+        removeBranch: Bool,
+        branch: String?
     ) throws {
         // Validate the path is inside the repository
         try validatePathInsideRepository(worktreePath)
@@ -139,31 +185,18 @@ public actor GitService {
         }
 
         // Remove the branch if requested
-        if removeBranch {
-            // Extract the branch name from the worktree; use the prompt file if available
-            // For now, attempt to find the branch by examining the worktree metadata
-            // Fallback: user must specify or we discover from git worktree list
-            do {
-                let output = try runGit(["worktree", "list", "--porcelain"])
-                for line in output.split(separator: "\n") {
-                    let parts = line.split(separator: " ")
-                    if parts.count >= 2 {
-                        let path = String(parts[0])
-                        if path == worktreePath.path {
-                            if parts.count >= 3 && parts[1] == "branch" {
-                                let branchRef = String(parts[2])
-                                // Extract branch name from refs/heads/...
-                                if branchRef.hasPrefix("refs/heads/") {
-                                    let branchName = String(branchRef.dropFirst("refs/heads/".count))
-                                    _ = try runGit(["branch", "-D", branchName])
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch {
-                // If we can't determine the branch, that's okay — the worktree is removed
-            }
+        guard removeBranch, let branch else { return }
+        // The branch name is passed in rather than parsed back out of `worktree list --porcelain`.
+        // That output is one key per line, not space-separated fields on one line, so the parsing
+        // this replaced could not have matched — and a branch deletion that silently does nothing
+        // is the failure mode you discover after losing the work you thought you had kept.
+        do {
+            _ = try runGit(["branch", "-D", branch])
+        } catch {
+            throw GitError.cannotRemoveWorktree(
+                path: worktreePath.path,
+                reason: "worktree removed but branch \(branch) could not be deleted: \(error)"
+            )
         }
     }
 

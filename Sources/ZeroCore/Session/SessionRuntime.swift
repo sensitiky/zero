@@ -171,7 +171,14 @@ public actor SessionRuntime {
                 workingDirectory: worktreePath
             )
         } catch {
-            try? await gitService.removeWorktree(at: worktreePath, removeBranch: true)
+            // Rolling back a worktree created seconds ago that never held anything. This is the
+            // one authorized deletion that needs no confirmation, because there is no work in it
+            // to lose — and leaving it behind would strand an empty branch per failed start.
+            try? await gitService.tearDown(
+                worktreeAt: worktreePath,
+                branch: branchName,
+                authorization: .worktreeAndBranch
+            )
             throw CreationError.providerError(String(describing: error))
         }
 
@@ -180,7 +187,14 @@ public actor SessionRuntime {
         do {
             try await process.start()
         } catch {
-            try? await gitService.removeWorktree(at: worktreePath, removeBranch: true)
+            // Rolling back a worktree created seconds ago that never held anything. This is the
+            // one authorized deletion that needs no confirmation, because there is no work in it
+            // to lose — and leaving it behind would strand an empty branch per failed start.
+            try? await gitService.tearDown(
+                worktreeAt: worktreePath,
+                branch: branchName,
+                authorization: .worktreeAndBranch
+            )
             throw CreationError.processError(String(describing: error))
         }
 

@@ -404,4 +404,100 @@ struct SessionRuntimeTests {
         try FileManager.default.createDirectory(at: tempURL, withIntermediateDirectories: true)
         return tempURL
     }
+
+    // MARK: - C4 — resume
+
+    @Test("a resumed Claude Code session is relaunched with --resume and the persisted id")
+    func resumePassesTheProviderSessionID() throws {
+        // Asserted at the layer that decides the argv, because that is what the CLI actually reads.
+        let registry = ProviderRegistry()
+        guard case .available = registry.status(of: .claude) else { return }
+        let configuration = try registry.configuration(
+            for: .claude,
+            workingDirectory: URL(fileURLWithPath: "/tmp"),
+            extraArguments: ["--resume", "abc-123"]
+        )
+        #expect(configuration.arguments.contains("--resume"))
+        #expect(configuration.arguments.contains("abc-123"))
+        // The opening flags still have to be there: a resumed session is the same stream shape.
+        #expect(configuration.arguments.contains("--print"))
+        #expect(configuration.arguments.contains("stream-json"))
+        // A flag verified not to exist must never reappear.
+        #expect(!configuration.arguments.contains("--permission-prompt-tool"))
+    }
+
+    @Test("a session with no provider id resumes read-only with its history intact")
+    func resumeWithoutProviderIDIsReadOnly() async throws {
+        let store = try createTestStore()
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        let git = Process()
+        git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        git.arguments = ["init", "-q", repo.path]
+        try git.run()
+        git.waitUntilExit()
+
+        let session = try store.createSession(
+            repository: nil,
+            provider: "claude",
+            model: "haiku",
+            worktreePath: repo.appendingPathComponent(".worktrees/x").path,
+            branch: "zero/readonly"
+        )
+        _ = try store.appendMessage(to: session, role: "assistant", content: "earlier work")
+        try store.flush()
+        let id = session.id
+
+        let runtime = try await SessionRuntime.resume(
+            sessionID: id,
+            store: store,
+            providerRegistry: ProviderRegistry()
+        )
+
+        // The transcript finishes rather than hanging: a read-only session has nothing more to say,
+        // and a stream that never ends would leave the UI waiting forever.
+        for await _ in runtime.transcript {}
+
+        #expect(await runtime.state == .finished)
+        let restored = try store.fetchSession(id: id)
+        #expect(restored?.orderedMessages.map(\.content) == ["earlier work"])
+    }
+
+    @Test("sending to a session with no live process throws instead of dropping the turn")
+    func sendWithoutProcessThrows() async throws {
+        let store = try createTestStore()
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        let git = Process()
+        git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        git.arguments = ["init", "-q", repo.path]
+        try git.run()
+        git.waitUntilExit()
+
+        let session = try store.createSession(
+            repository: nil, provider: "claude", model: "haiku",
+            worktreePath: repo.path, branch: "zero/nosend"
+        )
+        let runtime = SessionRuntime(
+            sessionID: session.id,
+            process: AgentProcess(
+                configuration: AgentProcess.Configuration(
+                    executable: URL(fileURLWithPath: "/usr/bin/true"),
+                    arguments: [], environment: [:], workingDirectory: repo
+                )
+            ),
+            store: store,
+            gitService: try GitService(repositoryPath: repo),
+            decoder: ClaudeCodeDecoder(),
+            encoder: ClaudeCodeEncoder(),
+            providerRegistry: ProviderRegistry()
+        )
+
+        // A message that silently vanishes is worse than an error: the user retypes it and assumes
+        // they made the mistake.
+        await #expect(throws: (any Error).self) {
+            try await runtime.send("hello")
+        }
+    }
+
 }

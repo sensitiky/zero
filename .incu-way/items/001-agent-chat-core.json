@@ -5,7 +5,7 @@
   "branch": "feat/001-agent-chat-core",
   "isolation": "current-checkout-branch",
   "phase": "implementation",
-  "nextStep": "C4 (resume, stubbeado) y D3 (confirmacion de borrado), luego Fase E",
+  "nextStep": "F2 (tabla de precios), E5/E6 (teclado y accesibilidad), G1-G4",
   "documents": {
     "docs/prds/001-agent-chat-core/PRD.md": "approved",
     "docs/prds/001-agent-chat-core/PLAN.md": "approved",
@@ -133,7 +133,7 @@
     {
       "id": "C4",
       "title": "Resume de sesion con degradacion",
-      "status": "blocked"
+      "status": "done"
     },
     {
       "id": "D1",
@@ -148,7 +148,7 @@
     {
       "id": "D3",
       "title": "Cierre de sesion con confirmacion",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "D4",
@@ -163,47 +163,47 @@
     {
       "id": "E1",
       "title": "Shell: sidebar / chat / inspector",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "E2",
       "title": "Transcript con streaming, seleccion, copia, busqueda",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "E3",
       "title": "Celdas de tool call, diff, thinking, plan",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "E4",
       "title": "UI de permisos y modos por sesion",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "E5",
       "title": "Operacion completa por teclado y command palette",
-      "status": "todo"
+      "status": "in-progress"
     },
     {
       "id": "E6",
       "title": "Pase de accesibilidad",
-      "status": "todo"
+      "status": "in-progress"
     },
     {
       "id": "F1",
       "title": "Uso de tokens por turno desde los adapters",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "F2",
       "title": "Tabla de precios horneada, costo desconocido explicito",
-      "status": "todo"
+      "status": "in-progress"
     },
     {
       "id": "F3",
       "title": "Inspector de costo y aviso de contexto",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "G1",

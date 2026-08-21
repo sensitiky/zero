@@ -252,7 +252,7 @@ struct GitServiceTests {
 
         #expect(FileManager.default.fileExists(atPath: worktreePath.path))
 
-        try await service.removeWorktree(at: worktreePath, removeBranch: false)
+        try await service.tearDown(worktreeAt: worktreePath, branch: nil, authorization: .worktreeOnly)
 
         #expect(!FileManager.default.fileExists(atPath: worktreePath.path))
     }
@@ -345,6 +345,69 @@ struct GitServiceTests {
 
         #expect(baseBranch == "master" || baseBranch == "main")
     }
+
+    // MARK: - D3 — a teardown deletes only what it was authorized to delete
+
+    /// The guarantee of FR-5, asserted by asking `git`, not by trusting our own bookkeeping.
+    @Test("an unauthorized teardown deletes nothing")
+    func unauthorizedTeardownDeletesNothing() async throws {
+        let repo = try createTempRepo()
+        defer { cleanupRepo(repo) }
+        let service = try GitService(repositoryPath: repo)
+        let (path, branch) = try await service.createWorktree(from: "keep me")
+
+        let outcome = try await service.tearDown(
+            worktreeAt: path, branch: branch, authorization: .keepEverything
+        )
+
+        #expect(outcome == GitService.TeardownOutcome(removedWorktree: false, removedBranch: false))
+        #expect(FileManager.default.fileExists(atPath: path.path))
+        #expect(branchExists(branch, in: repo))
+    }
+
+    @Test("worktreeOnly removes the worktree and keeps the branch, so the work survives")
+    func worktreeOnlyKeepsTheWork() async throws {
+        let repo = try createTempRepo()
+        defer { cleanupRepo(repo) }
+        let service = try GitService(repositoryPath: repo)
+        let (path, branch) = try await service.createWorktree(from: "half way")
+
+        let outcome = try await service.tearDown(
+            worktreeAt: path, branch: branch, authorization: .worktreeOnly
+        )
+
+        #expect(outcome == GitService.TeardownOutcome(removedWorktree: true, removedBranch: false))
+        #expect(!FileManager.default.fileExists(atPath: path.path))
+        #expect(branchExists(branch, in: repo), "the branch is where the work lives")
+    }
+
+    @Test("worktreeAndBranch removes both")
+    func worktreeAndBranchRemovesBoth() async throws {
+        let repo = try createTempRepo()
+        defer { cleanupRepo(repo) }
+        let service = try GitService(repositoryPath: repo)
+        let (path, branch) = try await service.createWorktree(from: "throw away")
+
+        let outcome = try await service.tearDown(
+            worktreeAt: path, branch: branch, authorization: .worktreeAndBranch
+        )
+
+        #expect(outcome == GitService.TeardownOutcome(removedWorktree: true, removedBranch: true))
+        #expect(!FileManager.default.fileExists(atPath: path.path))
+        #expect(!branchExists(branch, in: repo))
+    }
+
+    private func branchExists(_ branch: String, in repo: URL) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-C", repo.path, "rev-parse", "--verify", "refs/heads/\(branch)"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+        process.waitUntilExit()
+        return process.terminationStatus == 0
+    }
+
 }
 
 // MARK: - Helper Extensions
