@@ -121,7 +121,7 @@ public actor ProtocolLog: Sendable {
             } else {
                 let handle = try FileHandle(forWritingTo: logURL)
                 defer { try? handle.close() }
-                try handle.seekToEndOfFile()
+                handle.seekToEndOfFile()
                 try handle.write(contentsOf: payload)
             }
         } catch {

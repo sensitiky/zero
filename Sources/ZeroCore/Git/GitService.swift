@@ -241,7 +241,7 @@ public actor GitService {
     ///
     /// Resolves symlinks at every component level to detect escapes.
     private func resolvePathFully(_ path: String) throws -> String {
-        var normalized = (path as NSString).standardizingPath
+        let normalized = (path as NSString).standardizingPath
 
         // Ensure absolute path
         guard normalized.hasPrefix("/") else {
