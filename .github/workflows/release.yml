@@ -1,12 +1,10 @@
 name: release
 
-# Runs on a self-hosted macOS runner (registered by hand, see
-# docs/prds/002-ci-cd-releases/TESTING.md) because the app's deployment target is macOS 26.0 —
-# a GitHub-hosted runner image isn't guaranteed to carry that SDK yet.
+# Runs on every push to main (including a merged PR) — auto-bumps the patch version from the
+# latest vX.Y.Z tag, tags it, and publishes a GitHub Release with a DMG for it.
 on:
   push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+    branches: [main]
   workflow_dispatch:
     inputs:
       version:
@@ -14,20 +12,35 @@ on:
         required: true
         default: "0.0.0-test"
 
+permissions:
+  contents: write
+
 jobs:
   release:
-    runs-on: [self-hosted, macOS]
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Resolve version
         id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          LATEST=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          if [ -z "$LATEST" ]; then
+            NEW=v0.1.0
+          else
+            IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
+            NEW="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          echo "version=${NEW#v}" >> "$GITHUB_OUTPUT"
+          echo "tag=${NEW}" >> "$GITHUB_OUTPUT"
 
       - name: Test
         run: swift test
@@ -46,9 +59,13 @@ jobs:
           echo "path=$DMG" >> "$GITHUB_OUTPUT"
 
       # workflow_dispatch is for dry-running the build+package steps above without touching
-      # tags/releases — see Gate 3 in TESTING.md. Only an actual tag push publishes.
-      - name: Publish release
+      # tags/releases — see Gate 3 in TESTING.md. Only an actual push to main tags and publishes.
+      - name: Tag and publish release
         if: github.event_name == 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ github.ref_name }}" "${{ steps.dmg.outputs.path }}" --generate-notes
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" "${{ steps.dmg.outputs.path }}" --generate-notes
