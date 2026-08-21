@@ -6,8 +6,17 @@ import SwiftUI
 /// shortcut becomes discoverable instead of folklore.
 struct ZeroCommands: Commands {
     @Bindable var model: AppModel
+    @Bindable var coordinator: SessionCoordinator
 
     var body: some Commands {
+        CommandGroup(after: .appSettings) {
+            // The visible, toggleable half of the "auto-approve routine commands" policy: the
+            // checkbox is the fact that makes `PermissionOrigin.rule(_:)` legitimate rather than a
+            // silent bypass — a real setting the user set, not a hardcoded allowlist. Off returns
+            // to asking for every matched tool call, exactly like before this existed.
+            Toggle("Ask Before Every Action", isOn: askBeforeEveryAction)
+            Divider()
+        }
         CommandGroup(after: .newItem) {
             // Lands on the compose state for whichever project is in context, rather than opening a
             // dialog that asks for a repository the user already chose.
@@ -25,6 +34,13 @@ struct ZeroCommands: Commands {
             Button("Previous Session") { move(by: -1) }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
         }
+    }
+
+    private var askBeforeEveryAction: Binding<Bool> {
+        Binding(
+            get: { !coordinator.autoApproveRoutineCommands },
+            set: { coordinator.autoApproveRoutineCommands = !$0 }
+        )
     }
 
     private func move(by offset: Int) {

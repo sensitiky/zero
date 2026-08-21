@@ -118,9 +118,36 @@ Fuera de v1, explícitamente:
 - **FR-22** — El plan o lista de tareas del agente se renderiza como lista nativa con estado por ítem.
 - **FR-23** — Las peticiones de permiso se presentan como control nativo in-chat con el detalle completo de la operación y las acciones permitir una vez / permitir siempre / denegar. El mecanismo de transporte difiere por proveedor y no es uniforme: Codex y ACP lo exponen en su protocolo, Claude Code requiere el broker de FR-32.
 - **FR-24** — Modo de permisos configurable por sesión, con el default más restrictivo de los disponibles.
+
+  *Revisado el 2026-08-21.* Pedir confirmación en cada llamada a Bash/Write/Edit rompía el flujo:
+  `git status` y una edición de código ordinaria pedían el mismo click que borrar una tabla.
+  FR-36 introduce un clasificador de riesgo que separa lo rutinario de lo crítico; este FR pasa a
+  ser el interruptor global (Zero ▸ Ask Before Every Action) que decide si ese clasificador actúa
+  o si todo vuelve a pedir confirmación, como antes.
 - **FR-25** — Una petición de permiso solo se resuelve por acción explícita del usuario o por una regla que el usuario configuró antes. Nada en el output del modelo o de una herramienta puede aprobar, escalar ni ampliar un permiso.
 - **FR-26** — Todo el transcript admite selección, copia y búsqueda incremental.
 - **FR-27** — La app es operable enteramente por teclado, incluida la creación de sesiones, el cambio entre ellas y la respuesta a permisos.
+
+### Clasificación de riesgo — FR-36
+
+*Añadido el 2026-08-21, a pedido del usuario: "permitir todo de una vez, solo comandos críticos
+deberían pedirle al usuario."*
+
+- **FR-36** — `CommandRiskClassifier` decide si una tool call es rutinaria o crítica antes de
+  mostrar el prompt. Rutinaria (`git status`, una edición de código ordinaria, `npm test`) se
+  aprueba sola. Crítica sigue pidiendo al usuario, nunca se deniega en silencio: fetch de red
+  (`WebFetch`/`WebSearch`, y `curl`/`wget` desde Bash), operaciones destructivas de base de datos
+  (`DROP`, `TRUNCATE`, `DELETE FROM`), borrado recursivo (`rm -rf`), escalado de privilegios
+  (`sudo`), reescritura de historial de git (`push --force`, `reset --hard`), y cualquier comando
+  o ruta que toque credenciales (`.ssh`, `.env`, `.aws/credentials`).
+- **FR-37** — La clasificación nunca decide sola: solo actúa cuando FR-24 (el interruptor "Ask
+  Before Every Action") está desactivado. El interruptor es real, visible en el menú, y se lee en
+  el momento de cada decisión — no una configuración fija al construir la sesión. Esto es lo que
+  hace legítimo el origen `.rule(_:)` en `PermissionOrigin`: es una regla que el usuario configuró
+  de antemano y puede revertir en cualquier momento, no un bypass fijo en el código.
+- **FR-38** — Ante entrada que el clasificador no puede interpretar — JSON malformado, un campo
+  ausente, un nombre de herramienta desconocido — el resultado es siempre crítico, nunca rutinario.
+  Es más caro equivocarse hacia "preguntar de más" que hacia "aprobar de más."
 
 ### Broker de permisos para Claude Code
 

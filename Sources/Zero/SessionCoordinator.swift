@@ -25,6 +25,23 @@ final class SessionCoordinator {
 
     var lastError: String?
 
+    /// Whether a routine tool call is approved automatically, without showing the permission card.
+    ///
+    /// Off by default matches the PRD's original "most restrictive default." On is a deliberate
+    /// product decision made after that default proved to break the working flow: asking for every
+    /// single Bash and Edit call, including `git status` and ordinary source edits, trained the
+    /// instinct to click through without reading — the opposite of what the prompt exists for.
+    ///
+    /// This is what makes `PermissionOrigin.rule(_:)` legitimate here rather than a bypass: it is a
+    /// real, visible, user-toggleable setting (Zero ▸ Ask Before Every Action), read fresh on
+    /// every decision, never something baked in silently. `CommandRiskClassifier` only ever widens
+    /// what still asks; turning this off returns to asking for everything, exactly like before.
+    var autoApproveRoutineCommands: Bool {
+        get { UserDefaults.standard.object(forKey: Self.autoApproveKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Self.autoApproveKey) }
+    }
+    private static let autoApproveKey = "tech.incu.zero.autoApproveRoutineCommands"
+
     /// Which checkout each in-place session holds, so a second one cannot join it.
     private var occupiedCheckouts: [URL: UUID] = [:]
 
@@ -201,8 +218,16 @@ final class SessionCoordinator {
         let created = PermissionBroker(
             socketsDirectory: PermissionBroker.defaultSocketsDirectory()
         ) { [weak self] request in
-            await self?.awaitUserDecision(for: request)
-                ?? PermissionBroker.Resolution(decision: .deny, origin: .userAction)
+            guard let self else {
+                return PermissionBroker.Resolution(decision: .deny, origin: .userAction)
+            }
+            // Read live, not captured at broker construction: flipping the menu item takes effect
+            // on the very next tool call, not after restarting the session.
+            if await self.autoApproveRoutineCommands,
+               CommandRiskClassifier.classify(toolName: request.toolName, toolInputJSON: request.detail) == .routine {
+                return PermissionBroker.Resolution(decision: .allow, origin: .rule("auto-approve-routine-commands"))
+            }
+            return await self.awaitUserDecision(for: request)
         }
         broker = created
         return created

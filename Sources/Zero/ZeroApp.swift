@@ -25,6 +25,6 @@ struct ZeroApp: App {
                 .frame(minWidth: 900, minHeight: 560)
         }
         .windowStyle(.hiddenTitleBar)
-        .commands { ZeroCommands(model: model) }
+        .commands { ZeroCommands(model: model, coordinator: coordinator) }
     }
 }
