@@ -205,6 +205,25 @@ Al fijar el deployment target en macOS 26, la app adopta el lenguaje de diseño 
 directamente, sin capa de compatibilidad. Los materiales y controles son los nativos de la
 versión, no una reimplementación.
 
+### Paleta
+
+Dos tokens, tomados del logo. **Ni negro puro ni blanco puro aparecen en la app.**
+
+| Token | Valor | Rol en tema oscuro | Rol en tema claro |
+|---|---|---|---|
+| `ink` | `#131313` | fondo | texto y glifos |
+| `paper` | `#f3f3f3` | texto y glifos | fondo |
+
+Los dos roles se invierten con el tema; no hay una tercera pareja de valores. El contraste es
+**16.74:1**, frente al 21:1 de `#000`/`#fff` — por debajo del máximo teórico y muy por encima del
+7:1 que pide WCAG AAA, así que el NFR de accesibilidad se cumple sin excepciones.
+
+Suelo para texto secundario: `paper` al 70% sobre `ink` da 7.91:1 y sigue cumpliendo AAA. Al 55%
+cae a 5.10:1, que solo cumple AA. **El 70% es el piso**: por debajo de eso, no.
+
+El logo es monocromo de alto contraste, así que funciona en ambos temas sin variante — igual que
+el deployment target en macOS 26 evita ramas de compatibilidad, esto evita un segundo asset.
+
 ## Decisiones resueltas
 
 Resueltas por juicio de ingeniería, con el default declarado. Cada una es reversible y se
