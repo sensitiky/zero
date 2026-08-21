@@ -63,16 +63,25 @@ actor SessionRuntime {
     private let process: AgentProcess
     private let store: Store
     private let gitService: GitService
-    private var decoder: ClaudeCodeDecoder
+    /// Existential, not `ClaudeCodeDecoder`.
+    ///
+    /// A runtime named after one provider's decoder can only ever drive that provider, which is
+    /// the opposite of FR-13. It also made the off-main-thread guarantee untestable, because no
+    /// spy could be injected to observe where decoding actually runs.
+    private var decoder: any ProtocolDecoder
     private let providerRegistry: ProviderRegistry
 
+    private var consumeTask: Task<Void, Never>?
     private var currentState: SessionState = .idle
     private var lastFlush = Date()
     private let flushDebounceInterval: TimeInterval = 0.5
 
-    // AsyncStream for the transcript
-    let transcript: AsyncStream<AgentEvent>
-    private let transcriptContinuation: AsyncStream<AgentEvent>.Continuation
+    /// The normalized transcript, for a UI to render incrementally.
+    ///
+    /// `nonisolated` because `AsyncStream` is already `Sendable`: a consumer should be able to
+    /// subscribe without awaiting the actor, the same way `AgentProcess.output` works.
+    nonisolated let transcript: AsyncStream<AgentEvent>
+    private nonisolated let transcriptContinuation: AsyncStream<AgentEvent>.Continuation
 
     // MARK: - Initialization
 
@@ -81,7 +90,7 @@ actor SessionRuntime {
         process: AgentProcess,
         store: Store,
         gitService: GitService,
-        decoder: ClaudeCodeDecoder,
+        decoder: any ProtocolDecoder,
         providerRegistry: ProviderRegistry
     ) {
         self.sessionID = sessionID
@@ -193,8 +202,7 @@ actor SessionRuntime {
             providerRegistry: providerRegistry
         )
 
-        // Start processing in the runtime's actor context
-        await runtime.start()
+        try await runtime.start()
 
         return runtime
     }
@@ -225,7 +233,6 @@ actor SessionRuntime {
                 throw CreationError.gitError(String(describing: error))
             }
 
-            let provider = ProviderDescriptor.claude  // TODO: generalize provider selection
 
             // Dummy process for now; actual resume requires provider support
             let dummyProcess = AgentProcess(
@@ -263,9 +270,28 @@ actor SessionRuntime {
     }
 
     /// Starts the runtime: sets state to running and begins consuming output.
-    func start() async {
+    /// Launches the provider process if it is not already running, then consumes its output until
+    /// the session ends.
+    ///
+    /// It starts the process on purpose: an earlier version only consumed `process.output`, so a
+    /// caller that built a runtime directly waited forever on a subprocess nobody had launched.
+    /// A `start()` that does not start is a trap.
+    func start() async throws {
+        if await !process.isRunning {
+            try await process.start()
+        }
         currentState = .running
-        await consumeProcessOutput()
+        // Consumption runs detached so `start()` returns promptly. Awaiting it inline made session
+        // creation block until the agent's entire stream ended, which is the opposite of what a
+        // caller wants: it needs a live runtime to send turns to and a transcript to render.
+        consumeTask = Task { [weak self] in
+            await self?.consumeProcessOutput()
+        }
+    }
+
+    /// Waits for the session to finish. For tests and for orderly shutdown.
+    func waitUntilFinished() async {
+        await consumeTask?.value
     }
 
     // MARK: - Event Processing
@@ -316,11 +342,11 @@ actor SessionRuntime {
                     lastFlushTime = Date()
                 }
 
-            case .diagnostic(let text):
+            case .diagnostic:
                 // Logging/debug output; not part of the transcript
                 break
 
-            case .exited(let code, let reason):
+            case .exited(let code, _):
                 // Flush any pending events
                 if !pendingEvents.isEmpty {
                     await persistAndFlush(pendingEvents)

@@ -4,24 +4,41 @@ import SwiftData
 
 @testable import ZeroCore
 
-/// Spy decoder that records whether decode(line:) runs on the main thread.
-struct ThreadTrackingDecoder: ProtocolDecoder {
+/// Shared sink for the spy below.
+///
+/// A reference type on purpose: `ProtocolDecoder.decode` is `mutating`, so a struct spy records
+/// into whatever copy the runtime happens to hold and the test observes an empty array. An earlier
+/// version of this spy was a struct and could not observe anything, which is why the guarantee it
+/// was written for went unasserted.
+final class ThreadRecorder: @unchecked Sendable {
     private let lock = NSLock()
-    private var decodeThreads: [Bool] = []
-    private var realDecoder = ClaudeCodeDecoder()
+    private var samples: [Bool] = []
 
-    mutating func decode(line: Data) -> [AgentEvent] {
-        let isMain = Thread.isMainThread
+    func record(isMainThread: Bool) {
         lock.lock()
-        decodeThreads.append(isMain)
+        samples.append(isMainThread)
         lock.unlock()
-        return realDecoder.decode(line: line)
     }
 
-    var recordedThreads: [Bool] {
+    var recorded: [Bool] {
         lock.lock()
         defer { lock.unlock() }
-        return decodeThreads
+        return samples
+    }
+}
+
+/// Forwards to the real decoder while noting which thread each decode ran on.
+struct ThreadTrackingDecoder: ProtocolDecoder {
+    let recorder: ThreadRecorder
+    private var wrapped = ClaudeCodeDecoder()
+
+    init(recorder: ThreadRecorder) {
+        self.recorder = recorder
+    }
+
+    mutating func decode(line: Data) -> [AgentEvent] {
+        recorder.record(isMainThread: Thread.isMainThread)
+        return wrapped.decode(line: line)
     }
 }
 
@@ -319,25 +336,66 @@ struct SessionRuntimeTests {
 
     // MARK: - Threading Tests
 
-    @Test("decoding mechanism can track which thread decode runs on")
-    func threadTrackingDecoderWorks() throws {
-        let lines = try fixtureData(named: "text-turn")
-        var spy = ThreadTrackingDecoder()
+    @Test("decoding a real stream never runs on the main thread")
+    func decodingStaysOffTheMainThread() async throws {
+        // A real subprocess emitting a real captured fixture. Nothing is mocked: `cat` is the
+        // cheapest honest stand-in for a provider CLI, and the claim under test is about which
+        // thread the runtime decodes on, not about what the CLI is.
+        let fixture = try #require(
+            Bundle.module.url(
+                forResource: "text-turn",
+                withExtension: "ndjson",
+                subdirectory: "Fixtures/claude-code"
+            )
+        )
+        let recorder = ThreadRecorder()
+        let process = AgentProcess(
+            configuration: AgentProcess.Configuration(
+                executable: URL(fileURLWithPath: "/bin/cat"),
+                arguments: [fixture.path],
+                environment: ["PATH": "/usr/bin:/bin"],
+                workingDirectory: URL(fileURLWithPath: "/tmp")
+            )
+        )
+        // A real repo: GitService refuses anything that is not one, which is correct behavior.
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        let initProcess = Process()
+        initProcess.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        initProcess.arguments = ["init", "-q", repo.path]
+        try initProcess.run()
+        initProcess.waitUntilExit()
 
-        for line in lines {
-            _ = spy.decode(line: line)
-        }
+        let store = try createTestStore()
+        let session = try store.createSession(
+            repository: nil,
+            provider: "claude-code",
+            model: "haiku",
+            worktreePath: repo.path,
+            branch: "zero/thread"
+        )
+        let runtime = SessionRuntime(
+            sessionID: session.id,
+            process: process,
+            store: store,
+            gitService: try GitService(repositoryPath: repo),
+            decoder: ThreadTrackingDecoder(recorder: recorder),
+            providerRegistry: ProviderRegistry()
+        )
 
-        // Verify the spy recorded decode calls
-        let recordedCalls = spy.recordedThreads
-        #expect(!recordedCalls.isEmpty, "Spy should have recorded decode calls")
+        try await runtime.start()
+        // Draining the transcript is how a UI consumes a session, and the stream finishing is how
+        // it learns the session ended — so this is the consumer's real path, not a test shortcut.
+        for await _ in runtime.transcript {}
+        await runtime.waitUntilFinished()
 
-        // This test runs on main thread, so all calls here are true
-        // When integrated into SessionRuntime (which is an actor), they should all be false
-        #expect(recordedCalls.allSatisfy { $0 }, "Test runs on main thread, so all should be true")
+        let samples = recorder.recorded
+        #expect(!samples.isEmpty, "no decode ran, so this asserts nothing")
+        #expect(
+            !samples.contains(true),
+            "decoding ran on the main thread \(samples.filter { $0 }.count) of \(samples.count) times"
+        )
     }
-
-    // MARK: - Helpers
 
     private func createTempDirectory() throws -> URL {
         let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())

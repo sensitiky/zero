@@ -5,12 +5,12 @@
   "branch": "feat/001-agent-chat-core",
   "isolation": "current-checkout-branch",
   "phase": "implementation",
-  "nextStep": "C2: remedir SwiftData sin el O(n2); luego B8, C3, C4, D2-D5",
+  "nextStep": "C4 (resume, stubbeado) y D3 (confirmacion de borrado), luego Fase E",
   "documents": {
     "docs/prds/001-agent-chat-core/PRD.md": "approved",
     "docs/prds/001-agent-chat-core/PLAN.md": "approved",
     "docs/prds/001-agent-chat-core/TESTING.md": "not-started",
-    "docs/prds/001-agent-chat-core/MEASUREMENTS.md": "in-progress"
+    "docs/prds/001-agent-chat-core/MEASUREMENTS.md": "approved"
   },
   "gates": [
     {
@@ -98,7 +98,7 @@
     {
       "id": "B8",
       "title": "Cancelacion de turno por proveedor",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "B9",
@@ -123,17 +123,17 @@
     {
       "id": "C2",
       "title": "Puerta de medicion: benchmark de append 10k+10k",
-      "status": "in-progress"
+      "status": "done"
     },
     {
       "id": "C3",
       "title": "Persistir y restaurar sesiones e historial",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "C4",
       "title": "Resume de sesion con degradacion",
-      "status": "todo"
+      "status": "blocked"
     },
     {
       "id": "D1",
@@ -143,7 +143,7 @@
     {
       "id": "D2",
       "title": "Creacion de sesion end-to-end",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "D3",
@@ -153,12 +153,12 @@
     {
       "id": "D4",
       "title": "Maquina de estados de sesion",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "D5",
       "title": "N sesiones concurrentes sin bloquear el main actor",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "E1",
