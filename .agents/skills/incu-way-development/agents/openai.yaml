@@ -1,0 +1,6 @@
+interface:
+  display_name: "Incu Way Development"
+  short_description: "Ship features with PRD and gates"
+  default_prompt: "Use $incu-way-development to scope this feature, write the PRD, plan it, and implement after approval."
+policy:
+  allow_implicit_invocation: true

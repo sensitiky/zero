@@ -1,0 +1,6 @@
+interface:
+  display_name: "Incu Way Security Validation"
+  short_description: "Validate code against OWASP/CWE"
+  default_prompt: "Use $incu-way-security-validation to validate this code against OWASP or CWE controls."
+policy:
+  allow_implicit_invocation: true

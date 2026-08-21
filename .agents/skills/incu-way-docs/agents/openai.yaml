@@ -1,0 +1,6 @@
+interface:
+  display_name: "Incu Way Docs"
+  short_description: "Document an existing codebase"
+  default_prompt: "Use $incu-way-docs to produce or refresh architecture documentation for this codebase."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,102 @@
+# incu/dev — the Incu feature-development flow, as a member way of the incu/incu-way family.
+#
+# Driven by `skills/incu-way-development` (declared at the family level — see /way.yaml and
+# ways/README.md "Layout"). This manifest is the canonical description of the FLOW: its phases,
+# gates, generated documents and state pointer. Phase ids match the `feature` phase enum of the
+# state contract (ways/rulepacks/state-contract/rules/state-contract.md), so what this way
+# declares and what the skill writes to `.ways/state.json` are the same vocabulary.
+#
+# Validate:  ways validate ways/incu-dev/way.yaml       (run from the repo root)
+#            ways conformance ways/incu-dev/way.yaml
+apiVersion: ways/v1alpha1
+kind: Way
+metadata:
+  name: incu/dev
+  displayName: Incu Development
+  version: 1.3.0
+  description: Incu's gated feature-development flow (discovery → PRD → plan → build → scans → PRs).
+  discipline: development
+  publisher: incu
+
+spec:
+  # Way-specific rules only. The shared payload (state contract, security, branch-flow) is
+  # declared once by the family — a member does not restate it.
+  knowledge:
+    - id: dev-conventions
+      description: Way-specific dev conventions.
+      applicability: { mode: always }
+      file: rules/conventions.md
+
+  requires:
+    cli:
+      - name: git
+        check: git --version
+        required: true
+      - name: gh
+        check: gh --version
+        versionConstraint: '>=2.0.0'
+        install: 'brew install gh  (https://cli.github.com)'
+        required: true
+        capability: vcs-host
+
+  # Slots this flow needs; the family declares the same ids (the effective set is their union).
+  needs:
+    - id: vcs-host
+      displayName: Version-control host
+      description: Hosts the repo and PRs — where this way opens and gates pull requests.
+      contract: ways.dev/vcs-host@1
+      required: true
+      providerSource: environment
+      options: [github, gitlab, bitbucket]
+    - id: sast
+      displayName: Static application security testing
+      description: Scans first-party code for vulnerabilities in the validation phase.
+      contract: ways.dev/sast@1
+      required: true
+      providerSource: environment
+      options: [snyk, semgrep]
+    - id: sca
+      displayName: Software composition analysis
+      description: Scans dependencies for known vulnerabilities in the validation phase.
+      contract: ways.dev/sca@1
+      required: true
+      providerSource: environment
+      options: [snyk]
+    - id: code-quality
+      displayName: Code quality analysis
+      description: Static quality scan (bugs, code smells) required by the validation checklist.
+      contract: ways.dev/code-quality@1
+      required: true
+      providerSource: environment
+      options: [sonarqube]
+
+  defaults:
+    bindings:
+      vcs-host: github
+      sast: snyk
+      sca: snyk
+      code-quality: sonarqube
+
+  flow:
+    # `feature` phases, per the state contract: discovery → prd → plan → implementation →
+    # validation → pr-develop → pr-main → done.
+    phases:
+      - { id: discovery, label: Discovery & intake }
+      - { id: prd, label: PRD }
+      - { id: plan, label: Implementation plan }
+      - { id: implementation, label: Implementation }
+      - { id: validation, label: Validation & scans }
+      - { id: pr-develop, label: PR feat→develop }
+      - { id: pr-main, label: PR develop→main }
+      - { id: done, label: Done }
+    gates:
+      - { id: prd, label: PRD review, afterPhase: prd, approval: user, enforcement: blocking }
+      - { id: plan, label: Plan review, afterPhase: plan, approval: user, enforcement: blocking, dependsOn: [prd] }
+      - { id: testing, label: User testing, afterPhase: validation, approval: user, enforcement: blocking, dependsOn: [plan] }
+      - { id: pr-develop, label: PR feat→develop, afterPhase: pr-develop, approval: user, enforcement: blocking, dependsOn: [testing] }
+      - { id: pr-main, label: PR develop→main, afterPhase: pr-main, approval: user, enforcement: blocking, dependsOn: [pr-develop] }
+    generates:
+      - { name: PRD.md, pathTemplate: 'docs/prds/{slug}/PRD.md', producedInPhase: prd, gate: prd, statusField: Status, required: true }
+      - { name: PLAN.md, pathTemplate: 'docs/prds/{slug}/PLAN.md', producedInPhase: plan, gate: plan, statusField: Status, required: true }
+      - { name: TESTING.md, pathTemplate: 'docs/prds/{slug}/TESTING.md', producedInPhase: validation, gate: testing }
+    state: .ways/state.json

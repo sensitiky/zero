@@ -1,0 +1,6 @@
+interface:
+  display_name: "Snyk Remediation"
+  short_description: "Triage and remediate Snyk findings"
+  default_prompt: "Use $snyk-remediation to scan, triage, plan, and remediate Snyk findings."
+policy:
+  allow_implicit_invocation: true
