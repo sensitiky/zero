@@ -18,10 +18,12 @@ struct ConversationPane: View {
             VStack(spacing: 0) {
                 TranscriptView(entries: session.events)
                 if let request = session.pendingPermission {
-                    Divider()
+                    // No divider: the card carries its own border and margin, matching the
+                    // composer's own floating surfaces rather than a bar wedged between two panes.
                     PermissionPrompt(request: request) { option in
                         coordinator.answerPermission(sessionID: session.id, option: option)
                     }
+                    .padding(.bottom, 8)
                 }
                 composer(session: session)
             }

@@ -8,6 +8,13 @@ struct ZeroApp: App {
 
     init() {
         let model = AppModel()
+        if PreviewData.isEnabled {
+            // ZERO_PREVIEW=1, set via LSEnvironment in the preview bundle's Info.plist — never seen
+            // by a normal launch. Seeds the sidebar, transcript, tool cells, diff, plan and the
+            // permission card with data built through the real Transcript API, so every panel can be
+            // looked at without a real agent or repository.
+            PreviewData.seed(into: model)
+        }
         _model = State(initialValue: model)
         _coordinator = State(initialValue: SessionCoordinator(model: model))
     }
