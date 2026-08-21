@@ -1,0 +1,23 @@
+apiVersion: ways/v1alpha1
+ways:
+  incu/dev:
+    source: github:incu-tech/incuway
+    scope: local
+    resolved:
+      source: github:incu-tech/incuway
+      ref: 79d214ecc5356faca877b1b013eff9f003cd9774
+      digest: sha256:d461147e201103031bb08e2f79273a220050cb4d89bca7ef8847797a5dba5fd1
+  incu/security:
+    source: github:incu-tech/incuway
+    scope: local
+    resolved:
+      source: github:incu-tech/incuway
+      ref: 79d214ecc5356faca877b1b013eff9f003cd9774
+      digest: sha256:5005b3c257a12e72592822a4c51def21bfa9f56ce2b3d499d84040de66bfecd2
+  incu/incu-way:
+    source: github:incu-tech/incuway
+    scope: local
+    resolved:
+      source: github:incu-tech/incuway
+      ref: 79d214ecc5356faca877b1b013eff9f003cd9774
+      digest: sha256:a929ca688b86e83a9636365f9fb940b04173adb79b2a0f206608b6ecb1ab6b05
