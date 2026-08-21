@@ -116,14 +116,17 @@ final class SessionCoordinator {
                     id: id,
                     projectID: repository,
                     title: Self.title(from: prompt),
-                    summary: AppModel.condensed(prompt),
                     provider: provider.displayName,
                     model: modelName,
                     branch: branch,
                     workspace: workspace,
-                    state: .running
+                    state: .running,
+                    initialPrompt: prompt
                 )
             )
+            // The opening request belongs in the transcript too: it is the first thing said, and a
+            // conversation that starts with the reply reads as if the question was lost.
+            model.appendUserMessage(prompt, to: id)
             if workspace == .currentCheckout { occupiedCheckouts[repository] = id }
             model.selection = .session(id)
             pump(runtime, id: id)
@@ -151,6 +154,9 @@ final class SessionCoordinator {
 
     func send(_ text: String, to id: UUID) async {
         guard let runtime = runtimes[id] else { return }
+        // Shown before the write is attempted, so the message never appears to vanish. If the send
+        // fails the error says so, which is better than a message that was silently never recorded.
+        model.appendUserMessage(text, to: id)
         do {
             try await runtime.send(text)
         } catch {
@@ -204,10 +210,7 @@ final class SessionCoordinator {
         guard let sessionID = model.selectedSessionID ?? model.sessions.first?.id else {
             return PermissionBroker.Resolution(decision: .deny, origin: .userAction)
         }
-        model.sessions.firstIndex { $0.id == sessionID }.map { index in
-            model.sessions[index].pendingPermission = request
-            model.sessions[index].state = .waitingPermission
-        }
+        model.apply(.permissionRequested(request), to: sessionID)
         return await withCheckedContinuation { continuation in
             var resumed = false
             pendingResolvers[sessionID] = { resolution in

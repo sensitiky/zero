@@ -7,7 +7,7 @@ import ZeroCore
 /// look at, and flattening them into a stream of characters is exactly what embedding a terminal
 /// does. Everything here stays selectable and searchable (FR-26).
 struct TranscriptView: View {
-    let entries: [AppModel.TranscriptEntry]
+    let entries: [Transcript.Entry]
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -31,8 +31,10 @@ struct TranscriptView: View {
     }
 
     @ViewBuilder
-    private func row(for entry: AppModel.TranscriptEntry) -> some View {
+    private func row(for entry: Transcript.Entry) -> some View {
         switch entry {
+        case .userText(_, let text):
+            UserMessage(text: text)
         case .assistantText(_, let text):
             Text(text)
                 .textSelection(.enabled)
@@ -101,5 +103,31 @@ struct PlanList: View {
         case .inProgress: return "◐"
         case .completed: return "●"
         }
+    }
+}
+
+/// What the user said.
+///
+/// Indented and boxed rather than tinted: the palette is monochrome, so position and enclosure are
+/// what separate the two voices — and they keep working for anyone who cannot tell two greys apart.
+struct UserMessage: View {
+    let text: String
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 48)
+            Text(text)
+                .textSelection(.enabled)
+                .multilineTextAlignment(.leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Theme.foreground(scheme).opacity(0.08))
+                )
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("You said: \(text)")
     }
 }
