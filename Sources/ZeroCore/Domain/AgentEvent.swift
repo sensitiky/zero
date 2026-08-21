@@ -187,6 +187,15 @@ public struct Usage: Sendable, Equatable {
     /// `total_cost_usd`; a provider that reports nothing leaves this nil and falls back to the table.
     public var costUSD: Double?
 
+    /// The tokens that occupied the context on the last turn.
+    ///
+    /// Input plus both cache figures: that sum is the prompt actually sent, which is what fills the
+    /// window. Output is what came back and does not occupy it.
+    public var contextTokens: Int? {
+        let parts = [inputTokens, cacheReadTokens, cacheWriteTokens].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.reduce(0, +)
+    }
+
     public init(
         model: String? = nil,
         inputTokens: Int? = nil,

@@ -13,7 +13,6 @@ struct ZeroCommands: Commands {
             // dialog that asks for a repository the user already chose.
             Button("New Session") {
                 if let projectID = model.selectedProjectID ?? model.projects.first?.id {
-                    model.composerText = ""
                     model.selection = .project(projectID)
                 }
             }
@@ -21,9 +20,6 @@ struct ZeroCommands: Commands {
             .disabled(model.projects.isEmpty)
         }
         CommandGroup(after: .sidebar) {
-            Button("Toggle Inspector") { model.inspectorVisible.toggle() }
-                .keyboardShortcut("i", modifiers: [.command, .option])
-            Divider()
             Button("Next Session") { move(by: 1) }
                 .keyboardShortcut("]", modifiers: [.command, .shift])
             Button("Previous Session") { move(by: -1) }

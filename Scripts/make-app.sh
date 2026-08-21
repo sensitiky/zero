@@ -44,8 +44,21 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-if [ -f "$ROOT/Design/Zero.icns" ]; then
-    cp "$ROOT/Design/Zero.icns" "$APP/Contents/Resources/Zero.icns"
+# The icon is generated from the source PNG rather than committed as a binary .icns: one file to
+# update, and the sizes stay in step with it. An earlier version copied a .icns that was never
+# produced, so the app shipped with no icon at all and nothing said so.
+ICON_SRC="$ROOT/Design/logo.png"
+if [ -f "$ICON_SRC" ]; then
+    ICONSET="$(mktemp -d)/Zero.iconset"
+    mkdir -p "$ICONSET"
+    for size in 16 32 128 256 512; do
+        sips -z $size $size "$ICON_SRC" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+        double=$((size * 2))
+        sips -z $double $double "$ICON_SRC" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+    done
+    iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/Zero.icns"
+else
+    echo "warning: $ICON_SRC missing — the app will have no icon" >&2
 fi
 
 # Ad-hoc signature: enough to launch locally. Real distribution needs a Developer ID plus

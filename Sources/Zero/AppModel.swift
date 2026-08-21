@@ -59,8 +59,11 @@ final class AppModel {
     var projects: [Project] = []
     var sessions: [SessionSnapshot] = []
     var selection: Selection?
-    var inspectorVisible = true
-    var composerText = ""
+    // Deliberately absent: the composer's text.
+    //
+    // It used to live here, and every keystroke invalidated everything observing this model — the
+    // sidebar and the whole transcript included. That was the input lag. Draft text belongs to the
+    // field that owns it and reaches the model only on send.
     /// Filters the sidebar by session title and summary only.
     ///
     /// Deliberately not a full-text search over transcripts: those are long, and a search that

@@ -13,14 +13,7 @@ struct RootView: View {
             SessionSidebar(model: model, coordinator: coordinator)
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 380)
         } detail: {
-            HStack(spacing: 0) {
-                ConversationPane(model: model, coordinator: coordinator)
-                if model.inspectorVisible, model.selectedSession != nil {
-                    Divider()
-                    InspectorPane(model: model)
-                        .frame(width: 260)
-                }
-            }
+            ConversationPane(model: model, coordinator: coordinator)
         }
         .zeroSurface(scheme)
         .onAppear { StartupClock.reportFirstFrame() }
@@ -38,17 +31,10 @@ struct RootView: View {
             Text(coordinator.lastError ?? "")
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    model.inspectorVisible.toggle()
-                } label: {
-                    Label("Inspector", systemImage: "sidebar.trailing")
+            if let session = model.selectedSession {
+                ToolbarItem(placement: .primaryAction) {
+                    UsageIndicator(usage: session.usage)
                 }
-                // Disabled rather than hidden when there is no session. It used to render always and
-                // do nothing without one, which reads as a broken button next to the working sidebar
-                // toggle — and there were two things that looked like sidebar controls.
-                .disabled(model.selectedSession == nil)
-                .help(model.selectedSession == nil ? "Select a session first" : "Toggle the inspector")
             }
         }
     }

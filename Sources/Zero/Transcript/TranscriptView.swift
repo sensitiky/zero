@@ -13,13 +13,17 @@ struct TranscriptView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 18) {
                     ForEach(entries) { entry in
                         row(for: entry).id(entry.id)
                     }
                 }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 22)
+                // A measure, not the window width. Text running the full width of a wide display is
+                // hard to read, and it is most of what makes a chat feel like a log file.
+                .frame(maxWidth: 820)
+                .frame(maxWidth: .infinity)
             }
             .onChange(of: entries.last?.id) { _, newValue in
                 guard let newValue else { return }

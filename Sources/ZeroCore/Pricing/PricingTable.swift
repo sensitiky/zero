@@ -17,13 +17,24 @@ public struct PricingTable: Sendable {
         public let output: Double
         public let cacheRead: Double
         public let cacheWrite: Double
+        /// Total context window in tokens. Without it a usage ring has no denominator, and inventing
+        /// one would draw a confident fraction of a number nobody knows.
+        public let contextWindow: Int?
 
-        public init(match: String, input: Double, output: Double, cacheRead: Double, cacheWrite: Double) {
+        public init(
+            match: String,
+            input: Double,
+            output: Double,
+            cacheRead: Double,
+            cacheWrite: Double,
+            contextWindow: Int? = nil
+        ) {
             self.match = match
             self.input = input
             self.output = output
             self.cacheRead = cacheRead
             self.cacheWrite = cacheWrite
+            self.contextWindow = contextWindow
         }
     }
 
@@ -73,5 +84,15 @@ public struct PricingTable: Sendable {
             + perMillion(usage.outputTokens, entry.output)
             + perMillion(usage.cacheReadTokens, entry.cacheRead)
             + perMillion(usage.cacheWriteTokens, entry.cacheWrite)
+    }
+
+    /// How much of the model's context the last turn used, as a fraction, or nil when unknowable.
+    public func contextFraction(of usage: Usage) -> Double? {
+        guard let tokens = usage.contextTokens,
+              let model = usage.model,
+              let window = entry(forModel: model)?.contextWindow,
+              window > 0
+        else { return nil }
+        return min(1, Double(tokens) / Double(window))
     }
 }

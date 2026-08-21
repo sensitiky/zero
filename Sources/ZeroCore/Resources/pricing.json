@@ -1,9 +1,30 @@
 {
   "version": "2026-08-21",
-  "note": "Per million tokens, USD. Only for providers that do not report cost themselves; Claude Code reports total_cost_usd and that figure always wins. A model absent from this table yields an unknown cost, never an estimate of zero.",
+  "note": "Per million tokens, USD, plus each model's context window. Only for providers that do not report cost themselves; Claude Code reports total_cost_usd and that figure always wins. A model absent from this table yields an unknown cost and an indeterminate context ring, never an estimate of zero or a made-up denominator.",
   "models": [
-    { "match": "claude-opus-5",  "input": 15.0, "output": 75.0, "cacheRead": 1.5,  "cacheWrite": 18.75 },
-    { "match": "claude-sonnet-5", "input": 3.0,  "output": 15.0, "cacheRead": 0.3,  "cacheWrite": 3.75 },
-    { "match": "claude-haiku-4-5", "input": 1.0, "output": 5.0,  "cacheRead": 0.1,  "cacheWrite": 1.25 }
+    {
+      "match": "claude-opus-5",
+      "input": 15.0,
+      "output": 75.0,
+      "cacheRead": 1.5,
+      "cacheWrite": 18.75,
+      "contextWindow": 200000
+    },
+    {
+      "match": "claude-sonnet-5",
+      "input": 3.0,
+      "output": 15.0,
+      "cacheRead": 0.3,
+      "cacheWrite": 3.75,
+      "contextWindow": 200000
+    },
+    {
+      "match": "claude-haiku-4-5",
+      "input": 1.0,
+      "output": 5.0,
+      "cacheRead": 0.1,
+      "cacheWrite": 1.25,
+      "contextWindow": 200000
+    }
   ]
 }

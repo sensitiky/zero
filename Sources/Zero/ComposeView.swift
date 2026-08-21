@@ -12,6 +12,8 @@ struct ComposeView: View {
     @Environment(\.colorScheme) private var scheme
     @FocusState private var focused: Bool
     @State private var starting = false
+    /// Local on purpose — see the note in `AppModel`.
+    @State private var draft = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,26 +22,31 @@ struct ComposeView: View {
                 Text("What should be built in \(project.name)?")
                     .font(.title2.weight(.medium))
 
-                TextField("Describe the task", text: $model.composerText, axis: .vertical)
+                TextField("Describe the task", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.body)
                     .lineLimit(3...10)
                     .focused($focused)
-                    .padding(12)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    // The same surface as the reply composer: starting a session and continuing one
+                    // are the same act, and two different boxes would say otherwise.
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Theme.foreground(scheme).opacity(0.05))
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(Theme.foreground(scheme).opacity(0.055))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Theme.foreground(scheme).opacity(0.15), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(Theme.foreground(scheme).opacity(focused ? 0.32 : 0.14), lineWidth: 1)
                     )
+                    .animation(.easeOut(duration: 0.12), value: focused)
 
                 HStack(spacing: 10) {
                     ProviderModelPicker(model: model, coordinator: coordinator)
                     WorkspacePicker(model: model)
                     Spacer(minLength: 0)
                     Button(starting ? "Starting…" : "Start") { start() }
+                        .buttonStyle(.borderedProminent)
                         .keyboardShortcut(.return, modifiers: .command)
                         .disabled(!canStart)
                 }
@@ -62,7 +69,7 @@ struct ComposeView: View {
     }
 
     private var canStart: Bool {
-        !model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !starting
             && coordinator.isAvailable(model.draftProvider)
             && !model.draftModel.isEmpty
@@ -70,8 +77,8 @@ struct ComposeView: View {
 
     private func start() {
         guard canStart, let descriptor = coordinator.descriptor(for: model.draftProvider) else { return }
-        let prompt = model.composerText
-        model.composerText = ""
+        let prompt = draft
+        draft = ""
         starting = true
         Task {
             await coordinator.startSession(
