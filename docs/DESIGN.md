@@ -95,6 +95,18 @@ The app is fully keyboard-operable (FR-27): ⌘N for a new session, ⌘⇧] / �
 every permission option has a single-letter shortcut (`a`/`A`/`d`/`D`) so a permission prompt never
 requires reaching for the mouse — the thing most likely to get answered carelessly if it does.
 
+## Process rule: every UI change updates the preview too
+
+Whenever a change touches anything rendered — a new view, a restyled component, new states for an
+existing one — `PreviewData.seed()` gets updated in the same change so `ZeroPreview.app` shows it.
+The preview is a dependency of "done," not a follow-up.
+
+If the new surface needs data the mock sessions don't have (a new `AgentEvent` case, a new
+`ToolCall` shape, a new panel state), extend `PreviewData` to produce it — still through the real
+`Transcript.apply` path, never by hand-assembling a `Transcript`. A preview that silently stops
+matching what production renders is worse than no preview, because it keeps looking trustworthy
+after it stops being true.
+
 ## Verifying the UI without a live agent
 
 `Scripts/make-preview.sh` builds `ZeroPreview.app`: the same binary as `Zero.app`, launched with
