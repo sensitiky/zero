@@ -19,4 +19,14 @@ public enum SessionState: Sendable, Equatable {
 
     /// Session ended cleanly. History is preserved; the worktree remains for inspection.
     case finished
+
+    /// Whether the session still holds its workspace.
+    ///
+    /// A finished or failed session has let go of the checkout; anything else is still in there.
+    public var isLive: Bool {
+        switch self {
+        case .idle, .running, .waitingPermission: return true
+        case .finished, .error: return false
+        }
+    }
 }

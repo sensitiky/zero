@@ -13,11 +13,8 @@ public actor SessionRuntime {
         public var model: String
         public var prompt: String
         public var resumeSessionId: String?  // if resuming, the provider's session id
-        /// Whether the caller has been told about uncommitted changes and chose to continue.
-        ///
-        /// No defaulted boolean: FR-8's confirmation has to be something the caller states, and a
-        /// parameter that defaults to "go ahead" is how a confirmation quietly stops being one.
-        public var dirtyRepository: DirtyRepositoryPolicy = .refuse
+        /// Where the session works. Defaults to the checkout you are already in.
+        public var workspace: Workspace = .currentCheckout
 
         public init(
             repository: URL,
@@ -25,33 +22,43 @@ public actor SessionRuntime {
             model: String,
             prompt: String,
             resumeSessionId: String? = nil,
-            dirtyRepository: DirtyRepositoryPolicy = .refuse
+            workspace: Workspace = .currentCheckout
         ) {
             self.repository = repository
             self.provider = provider
             self.model = model
             self.prompt = prompt
             self.resumeSessionId = resumeSessionId
-            self.dirtyRepository = dirtyRepository
+            self.workspace = workspace
         }
     }
 
-    /// What to do when the target repository has uncommitted changes.
-    public enum DirtyRepositoryPolicy: Sendable, Equatable {
-        /// Stop and report, so the caller can ask the user.
-        case refuse
-        /// The user was shown what it means and chose to continue.
-        case proceedAcknowledged
+    /// Where a session does its work.
+    ///
+    /// The original design gave every session an isolated worktree, copied from tools built around
+    /// running many agents on independent tasks. That breaks the ordinary case: you are mid-change
+    /// and want the agent to continue *that* work. A worktree branches from the committed tree, so
+    /// by construction it cannot see anything uncommitted — which made "continue what I am doing"
+    /// impossible rather than merely awkward.
+    ///
+    /// So it is a choice, and the ordinary case is the default.
+    public enum Workspace: Sendable, Equatable {
+        /// The repository itself. The agent sees the working tree exactly as it is, uncommitted
+        /// changes included. Only one live session per checkout — two agents editing the same files
+        /// is the problem worktrees exist to solve.
+        case currentCheckout
+        /// A fresh worktree on its own branch, for a task that should run beside your work rather
+        /// than in it. Starts from the committed tree, so uncommitted changes are not present.
+        case isolatedWorktree
     }
 
     /// Reasons creation might fail.
     public enum CreationError: Error, Sendable, CustomStringConvertible {
-        /// The repository has uncommitted changes and the caller has not acknowledged it.
+        /// Another session is already working in this checkout.
         ///
-        /// Not a failure so much as a question: FR-8 says the app reports this and asks. Creating the
-        /// worktree anyway is safe — `git worktree add` leaves uncommitted work in the main checkout
-        /// — but the agent will not see that work, which is worth knowing before you start.
-        case repositoryIsDirty(path: String)
+        /// Not a warning to click through: two agents editing the same files at the same time
+        /// corrupts both their work. The way to run something in parallel is an isolated worktree.
+        case checkoutBusy(path: String)
         /// Provider could not be resolved or started.
         case providerError(String)
         /// Git operation failed.
@@ -63,10 +70,10 @@ public actor SessionRuntime {
 
         public var description: String {
             switch self {
-            case .repositoryIsDirty(let path):
+            case .checkoutBusy(let path):
                 return """
-                \(path) has uncommitted changes. They stay in your checkout and will not be part of \
-                the session, so the agent will not see them.
+                A session is already working in \(path). Two agents editing the same files at once \
+                will overwrite each other — start this one in an isolated worktree instead.
                 """
             case .providerError(let msg):
                 return "Provider: \(msg)"
@@ -161,28 +168,26 @@ public actor SessionRuntime {
             throw CreationError.gitError(String(describing: error))
         }
 
-        // Check if repository is dirty — surface this rather than silently deciding
-        let isDirty: Bool
-        do {
-            isDirty = try await gitService.isDirty()
-        } catch let error as GitError {
-            throw CreationError.gitError(String(describing: error))
-        } catch {
-            throw CreationError.gitError(String(describing: error))
-        }
-
-        if isDirty, config.dirtyRepository == .refuse {
-            throw CreationError.repositoryIsDirty(path: config.repository.path)
-        }
-
-        // Create the worktree
-        let (worktreePath, branchName): (URL, String)
-        do {
-            (worktreePath, branchName) = try await gitService.createWorktree(from: config.prompt)
-        } catch let error as GitError {
-            throw CreationError.gitError(String(describing: error))
-        } catch {
-            throw CreationError.gitError(String(describing: error))
+        // No dirty check. Working on uncommitted changes is the ordinary case, not an exception to
+        // warn about — the agent runs in the working tree and sees exactly what you see.
+        let worktreePath: URL
+        let branchName: String
+        switch config.workspace {
+        case .currentCheckout:
+            worktreePath = config.repository
+            do {
+                branchName = try await gitService.resolveBaseBranch()
+            } catch {
+                throw CreationError.gitError(String(describing: error))
+            }
+        case .isolatedWorktree:
+            do {
+                (worktreePath, branchName) = try await gitService.createWorktree(from: config.prompt)
+            } catch let error as GitError {
+                throw CreationError.gitError(String(describing: error))
+            } catch {
+                throw CreationError.gitError(String(describing: error))
+            }
         }
 
         // Build process configuration first (before MainActor work)
@@ -193,14 +198,16 @@ public actor SessionRuntime {
                 workingDirectory: worktreePath
             )
         } catch {
-            // Rolling back a worktree created seconds ago that never held anything. This is the
-            // one authorized deletion that needs no confirmation, because there is no work in it
-            // to lose — and leaving it behind would strand an empty branch per failed start.
-            try? await gitService.tearDown(
-                worktreeAt: worktreePath,
-                branch: branchName,
-                authorization: .worktreeAndBranch
-            )
+            // Rolls back only a worktree we just created and that never held anything. Never the
+            // user's own checkout: deleting that would destroy the work the session was meant to
+            // continue.
+            if config.workspace == .isolatedWorktree {
+                try? await gitService.tearDown(
+                    worktreeAt: worktreePath,
+                    branch: branchName,
+                    authorization: .worktreeAndBranch
+                )
+            }
             throw CreationError.providerError(String(describing: error))
         }
 
@@ -209,14 +216,16 @@ public actor SessionRuntime {
         do {
             try await process.start()
         } catch {
-            // Rolling back a worktree created seconds ago that never held anything. This is the
-            // one authorized deletion that needs no confirmation, because there is no work in it
-            // to lose — and leaving it behind would strand an empty branch per failed start.
-            try? await gitService.tearDown(
-                worktreeAt: worktreePath,
-                branch: branchName,
-                authorization: .worktreeAndBranch
-            )
+            // Rolls back only a worktree we just created and that never held anything. Never the
+            // user's own checkout: deleting that would destroy the work the session was meant to
+            // continue.
+            if config.workspace == .isolatedWorktree {
+                try? await gitService.tearDown(
+                    worktreeAt: worktreePath,
+                    branch: branchName,
+                    authorization: .worktreeAndBranch
+                )
+            }
             throw CreationError.processError(String(describing: error))
         }
 

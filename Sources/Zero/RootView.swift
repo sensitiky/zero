@@ -24,22 +24,6 @@ struct RootView: View {
         }
         .zeroSurface(scheme)
         .onAppear { StartupClock.reportFirstFrame() }
-        .confirmationDialog(
-            "This repository has uncommitted changes",
-            isPresented: .init(
-                get: { coordinator.dirtyRepositoryPrompt != nil },
-                set: { if !$0 { coordinator.cancelDirtyRepositoryStart() } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Start Anyway") { Task { await coordinator.confirmDirtyRepositoryStart() } }
-            Button("Cancel", role: .cancel) { coordinator.cancelDirtyRepositoryStart() }
-        } message: {
-            // Says what it actually means. `git worktree add` leaves uncommitted work in the main
-            // checkout, so nothing is at risk — the agent just will not see it. A generic warning
-            // here would read as "this might break something", which is the wrong worry.
-            Text(coordinator.dirtyRepositoryPrompt?.message ?? "")
-        }
         .alert(
             "Something went wrong",
             isPresented: .init(

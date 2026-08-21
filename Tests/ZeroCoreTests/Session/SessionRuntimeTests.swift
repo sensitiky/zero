@@ -134,49 +134,6 @@ struct SessionRuntimeTests {
 
     // MARK: - Dirty Repository Detection
 
-    @Test("creation fails with dirtyRepository error when repo has changes")
-    func creationFailsOnDirtyRepo() async throws {
-        let store = try createTestStore()
-        let registry = ProviderRegistry()
-
-        // Create a temporary git repo and initialize it
-        let tempDir = try createTempDirectory()
-        defer { try? FileManager.default.removeItem(atPath: tempDir.path) }
-
-        // Initialize a proper git repository
-        let gitProcess = Process()
-        gitProcess.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        gitProcess.arguments = ["init"]
-        gitProcess.currentDirectoryURL = tempDir
-        gitProcess.standardOutput = Pipe()
-        gitProcess.standardError = Pipe()
-        try gitProcess.run()
-        gitProcess.waitUntilExit()
-
-        // Create a test file to make repo "dirty"
-        let testFile = tempDir.appendingPathComponent("test.txt")
-        try "test".write(to: testFile, atomically: true, encoding: .utf8)
-
-        let config = SessionRuntime.CreationConfig(
-            repository: tempDir,
-            provider: .claude,
-            model: "claude-opus",
-            prompt: "test"
-        )
-
-        // Expect creation to fail with dirtyRepository error
-        do {
-            _ = try await SessionRuntime.create(with: config, store: store, providerRegistry: registry)
-            #expect(false, "Should have thrown dirtyRepository error")
-        } catch SessionRuntime.CreationError.repositoryIsDirty {
-            // Expected
-        } catch {
-            #expect(false, "Wrong error type: \(error)")
-        }
-    }
-
-    // MARK: - Tool Call Persistence
-
     @Test("tool call and its result persist as a single call with terminal status")
     func toolCallAndResultPersistTogether() throws {
         let store = try createTestStore()
@@ -501,70 +458,90 @@ struct SessionRuntimeTests {
     }
 
 
-    // MARK: - FR-8 — a dirty repository is a question, not a dead end
+    // MARK: - Workspace
 
-    @Test("an acknowledged dirty repository gets past the check")
-    func acknowledgedDirtyRepoProceeds() async throws {
+    @Test("a session in the current checkout runs where the uncommitted work is")
+    func currentCheckoutRunsInTheRepository() async throws {
         let store = try createTestStore()
         let repo = try createTempDirectory()
         defer { try? FileManager.default.removeItem(at: repo) }
-
-        let git = Process()
-        git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        git.arguments = ["init", "-q", repo.path]
-        try git.run()
-        git.waitUntilExit()
-        try "uncommitted".write(
-            to: repo.appendingPathComponent("dirty.txt"), atomically: true, encoding: .utf8
+        try makeRepository(at: repo)
+        try "work in progress".write(
+            to: repo.appendingPathComponent("wip.txt"), atomically: true, encoding: .utf8
         )
 
-        // A provider that cannot resolve, so the test proves the dirty gate opened without launching
-        // a real agent: with `.refuse` the failure is the dirty check, with `.proceedAcknowledged` it
-        // is the provider. Different error, same call — that is the gate moving.
-        let missing = ProviderDescriptor(
-            id: "definitely-not-installed",
-            displayName: "Nothing",
-            executableCandidates: ["definitely-not-installed"],
-            versionCommand: ["--version"],
-            minimumVersion: "0.0.0",
-            launchArguments: []
-        )
-
-        await #expect(throws: SessionRuntime.CreationError.self) {
-            _ = try await SessionRuntime.create(
-                with: .init(repository: repo, provider: missing, model: "m", prompt: "t"),
-                store: store,
-                providerRegistry: ProviderRegistry()
-            )
-        }
-
+        // A provider that cannot resolve, so this asserts where the session would run without
+        // launching a real agent. The dirty working tree must not be an obstacle: continuing
+        // uncommitted work is the ordinary case.
         do {
             _ = try await SessionRuntime.create(
                 with: .init(
-                    repository: repo,
-                    provider: missing,
-                    model: "m",
-                    prompt: "t",
-                    dirtyRepository: .proceedAcknowledged
+                    repository: repo, provider: Self.missingProvider, model: "m", prompt: "t",
+                    workspace: .currentCheckout
                 ),
                 store: store,
                 providerRegistry: ProviderRegistry()
             )
-            Issue.record("expected the provider to fail, not the dirty check")
-        } catch SessionRuntime.CreationError.repositoryIsDirty {
-            Issue.record("acknowledging the dirty repository did not get past the check")
+            Issue.record("expected the provider to fail")
+        } catch SessionRuntime.CreationError.providerError {
+            // Reached provider resolution, so nothing rejected the dirty checkout on the way.
         } catch {
-            // Any other failure means the gate opened, which is what this asserts.
+            Issue.record("failed before the provider: \(error)")
+        }
+
+        // The user's file is untouched: an in-place session must never tidy the workspace it was
+        // asked to work in.
+        #expect(FileManager.default.fileExists(atPath: repo.appendingPathComponent("wip.txt").path))
+    }
+
+    @Test("an isolated worktree starts from the commit, so uncommitted work is absent")
+    func isolatedWorktreeExcludesUncommittedWork() async throws {
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try makeRepository(at: repo)
+        try "not committed".write(
+            to: repo.appendingPathComponent("wip.txt"), atomically: true, encoding: .utf8
+        )
+
+        let service = try GitService(repositoryPath: repo)
+        let (worktree, _) = try await service.createWorktree(from: "beside my work")
+
+        // This is the trade the picker describes, asserted rather than asserted-in-a-tooltip.
+        #expect(!FileManager.default.fileExists(atPath: worktree.appendingPathComponent("wip.txt").path))
+        #expect(FileManager.default.fileExists(atPath: repo.appendingPathComponent("wip.txt").path))
+    }
+
+    @Test("the busy-checkout message points at the worktree option")
+    func busyCheckoutMessageIsActionable() {
+        let message = SessionRuntime.CreationError.checkoutBusy(path: "/tmp/x").description
+        #expect(message.contains("/tmp/x"))
+        // A refusal that does not say what to do instead is just a wall.
+        #expect(message.lowercased().contains("isolated worktree"))
+    }
+
+    private static let missingProvider = ProviderDescriptor(
+        id: "definitely-not-installed",
+        displayName: "Nothing",
+        executableCandidates: ["definitely-not-installed"],
+        versionCommand: ["--version"],
+        minimumVersion: "0.0.0",
+        launchArguments: []
+    )
+
+    private func makeRepository(at url: URL) throws {
+        for arguments in [["init", "-q", url.path],
+                          ["-C", url.path, "commit", "-q", "--allow-empty", "-m", "base"]] {
+            let git = Process()
+            git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            git.arguments = arguments
+            git.environment = ProcessInfo.processInfo.environment.merging([
+                "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+            ]) { _, new in new }
+            git.standardOutput = FileHandle.nullDevice
+            git.standardError = FileHandle.nullDevice
+            try git.run()
+            git.waitUntilExit()
         }
     }
-
-    @Test("the dirty repository message says the work stays put")
-    func dirtyMessageExplainsTheConsequence() {
-        // The consequence is that the agent will not see the uncommitted work, not that anything is
-        // at risk. A generic warning here would make the user worry about the wrong thing.
-        let message = SessionRuntime.CreationError.repositoryIsDirty(path: "/tmp/x").description
-        #expect(message.contains("/tmp/x"))
-        #expect(message.lowercased().contains("not be part of the session"))
-    }
-
 }

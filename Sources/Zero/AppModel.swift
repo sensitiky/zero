@@ -43,6 +43,7 @@ final class AppModel {
         var provider: String
         var model: String
         var branch: String
+        var workspace: SessionRuntime.Workspace
         var state: SessionState
         var events: [TranscriptEntry] = []
         var usage: Usage = Usage()
@@ -85,6 +86,9 @@ final class AppModel {
     /// What the next session in a project will use, remembered between sessions.
     var draftProvider = ProviderDescriptor.claude.id
     var draftModel = ProviderDescriptor.claude.knownModels.first ?? ""
+    /// Defaults to the checkout you are already in, because continuing your current work is the
+    /// ordinary case and an isolated worktree is the deliberate one.
+    var draftWorkspace: SessionRuntime.Workspace = .currentCheckout
 
     var selectedSessionID: UUID? {
         if case .session(let id) = selection { return id }

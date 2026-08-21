@@ -82,7 +82,20 @@ Fuera de v1, explícitamente:
 - **FR-5** — Al cerrar una sesión, la app ofrece conservar o eliminar el worktree y la rama, y nunca elimina ninguno de los dos sin confirmación.
 - **FR-6** — Sesiones, mensajes, tool calls y contadores persisten localmente. Reabrir la app restaura la lista y el historial completo.
 - **FR-7** — Una sesión persistida se puede reanudar, usando el mecanismo de resume del proveedor cuando lo expone, y degradando a sesión nueva con historial de solo lectura cuando no.
-- **FR-8** — Si el repo objetivo tiene cambios sin commitear, la app lo informa antes de crear el worktree y pide confirmación.
+- **FR-8** — Una sesión elige dónde trabaja, y por defecto trabaja en el checkout que ya tienes
+  abierto, viendo tus cambios sin commitear. La alternativa explícita es un worktree aislado, que
+  parte del último commit y corre al lado de tu trabajo en vez de dentro.
+
+  *Revisado el 2026-08-21.* La versión original decía que la app avisara de los cambios sin
+  commitear y pidiera confirmación antes de crear el worktree. Estaba mal planteado: copiaba el
+  modelo de un worktree por tarea de herramientas pensadas para lanzar agentes a tareas
+  independientes, y eso hace imposible el caso ordinario — estás a medio cambio y quieres que el
+  agente siga *ese* cambio. Un worktree parte del árbol commiteado, así que por construcción no
+  puede ver nada sin commitear. No era un aviso que faltara redactar mejor, era el default
+  equivocado.
+- **FR-8b** — Solo una sesión viva por checkout. Dos agentes editando los mismos archivos a la vez
+  se sobreescriben, y eso es precisamente lo que un worktree resuelve. El rechazo nombra la
+  alternativa en vez de ser un muro.
 
 ### Transporte y adapters
 
