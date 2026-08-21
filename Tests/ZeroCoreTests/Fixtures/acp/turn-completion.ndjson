@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","id":2,"result":{"stopReason":"end_turn"}}
+{"jsonrpc":"2.0","id":3,"result":{"stopReason":"max_tokens"}}
+{"jsonrpc":"2.0","id":4,"result":{"stopReason":"cancelled"}}
+{"jsonrpc":"2.0","id":5,"result":{"stopReason":"refusal"}}
