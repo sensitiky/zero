@@ -4,8 +4,8 @@
   "flow": "feature",
   "branch": "feat/001-agent-chat-core",
   "isolation": "current-checkout-branch",
-  "phase": "validation",
-  "nextStep": "Gate 3 — pruebas del usuario. G4 bloqueado por credenciales de Apple Developer.",
+  "phase": "pr-develop",
+  "nextStep": "Esperando aprobacion y merge del PR #1 (feat -> develop)",
   "documents": {
     "docs/prds/001-agent-chat-core/PRD.md": "approved",
     "docs/prds/001-agent-chat-core/PLAN.md": "approved",
@@ -25,13 +25,13 @@
     },
     {
       "id": "testing",
-      "status": "pending",
+      "status": "passed",
       "url": null
     },
     {
       "id": "pr-develop",
       "status": "pending",
-      "url": null
+      "url": "https://github.com/sensitiky/zero/pull/1"
     },
     {
       "id": "pr-main",
@@ -249,5 +249,6 @@
     "sdk": "macosx26.5",
     "deploymentTarget": "macos26.0",
     "arch": "arm64"
-  }
+  },
+  "repo": "https://github.com/sensitiky/zero"
 }
