@@ -4,12 +4,12 @@
   "flow": "feature",
   "branch": "feat/001-agent-chat-core",
   "isolation": "current-checkout-branch",
-  "phase": "implementation",
-  "nextStep": "F2 (tabla de precios), E5/E6 (teclado y accesibilidad), G1-G4",
+  "phase": "validation",
+  "nextStep": "Gate 3 — pruebas del usuario. G4 bloqueado por credenciales de Apple Developer.",
   "documents": {
     "docs/prds/001-agent-chat-core/PRD.md": "approved",
     "docs/prds/001-agent-chat-core/PLAN.md": "approved",
-    "docs/prds/001-agent-chat-core/TESTING.md": "not-started",
+    "docs/prds/001-agent-chat-core/TESTING.md": "approved",
     "docs/prds/001-agent-chat-core/MEASUREMENTS.md": "approved"
   },
   "gates": [
@@ -183,12 +183,12 @@
     {
       "id": "E5",
       "title": "Operacion completa por teclado y command palette",
-      "status": "in-progress"
+      "status": "done"
     },
     {
       "id": "E6",
       "title": "Pase de accesibilidad",
-      "status": "in-progress"
+      "status": "done"
     },
     {
       "id": "F1",
@@ -198,7 +198,7 @@
     {
       "id": "F2",
       "title": "Tabla de precios horneada, costo desconocido explicito",
-      "status": "in-progress"
+      "status": "done"
     },
     {
       "id": "F3",
@@ -208,22 +208,22 @@
     {
       "id": "G1",
       "title": "Medir NFR de rendimiento",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "G2",
       "title": "Auditoria de main actor",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "G3",
       "title": "Verificar bundle sin Node/Electron",
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "G4",
       "title": "Firma, notarizacion y DMG",
-      "status": "todo"
+      "status": "blocked"
     }
   ],
   "decisions": {

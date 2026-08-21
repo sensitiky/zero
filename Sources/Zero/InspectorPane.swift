@@ -5,6 +5,7 @@ import ZeroCore
 struct InspectorPane: View {
     @Bindable var model: AppModel
     @Environment(\.colorScheme) private var scheme
+    private let pricing = PricingTable.bundled()
 
     var body: some View {
         ScrollView {
@@ -24,7 +25,7 @@ struct InspectorPane: View {
                         row("Thinking", count(session.usage.thinkingTokens))
                     }
                     group("Cost") {
-                        row("Reported", cost(session.usage.costUSD))
+                        row(costLabel(session.usage), cost(pricing.cost(of: session.usage)))
                     }
                 }
             }
@@ -57,6 +58,12 @@ struct InspectorPane: View {
 
     private func count(_ value: Int?) -> String {
         value.map { $0.formatted(.number) } ?? "—"
+    }
+
+    /// Says which number this is. A provider's own figure and our estimate are different claims,
+    /// and showing them under the same label invites treating an estimate as a bill.
+    private func costLabel(_ usage: Usage) -> String {
+        usage.costUSD != nil ? "Reported" : "Estimated"
     }
 
     /// "unknown" rather than a zero, because FR-30 forbids implying a cost we were never told.

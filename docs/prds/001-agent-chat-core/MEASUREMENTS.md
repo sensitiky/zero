@@ -52,7 +52,53 @@ El coste honesto de eso: un crash pierde lo que no se haya flusheado, acotado a 
 milisegundos de mensajes. Se acepta a cambio de 3,7× en throughput de escritura — y con 3,07 ms de
 p50 la política por-append también sería viable, así que esto es margen, no rescate.
 
-## Pendiente
+## G1 — NFR de rendimiento
 
-Los NFR de la Fase G — cold start, memoria con 5 sesiones, fps con 3 streams — no se han medido
-todavía. No hay app que arrancar hasta la Fase E.
+Build release, Apple Silicon, macOS 26.5.2.
+
+| NFR | Objetivo | Medido | |
+|---|---|---|---|
+| Cold start a primer frame | < 1 s | **0,688 s** en frío, **0,140 s** templado | cumple |
+| Memoria, app en reposo | — | **89,7 MB** | referencia |
+| Memoria, 5 sesiones concurrentes (librería) | < 400 MB | **48,1 MB** residentes, delta 29,0 MB | cumple |
+| Bundle sin Node ni Electron | obligatorio | **4,3 MB**, cuatro archivos | cumple |
+| fps con 3 streams en paralelo | ≥ 60 | **no medido** | ver abajo |
+
+El cold start se mide desde la creación del proceso según el kernel, no desde `main`: buena parte
+de un arranque en frío es dyld y el runtime antes de que corra nuestro código, y medir desde `main`
+daría un número que nos favorece escondiéndolo. La instrumentación está en `StartupClock` y solo se
+activa con `ZERO_MEASURE_STARTUP`.
+
+La cifra de 5 sesiones mide **lo que cuesta Zero**, con los procesos de proveedor sustituidos por
+`cat` sobre un fixture capturado repetido 200 veces. Es la forma honesta para este NFR: mide
+decodificar, persistir y sostener cinco transcripts, no lo que cuestan los CLIs de agente, que es
+su propio presupuesto y no algo que la app pueda cambiar. Sumado al reposo de la app, el total
+queda muy por debajo del límite.
+
+**Los fps no están medidos.** Requieren Instruments sobre una ventana real con tres agentes
+streameando, y no hay forma honesta de automatizarlo desde aquí. Queda como paso manual en
+`TESTING.md`. No lo reporto como cumplido porque no lo he visto.
+
+## G2 — Auditoría de main actor
+
+- `SessionRuntime` es `public actor`, no `@MainActor`. El bucle de salida del proceso y
+  `decoder.decode(line:)` corren en su propio actor.
+- El único tipo `@MainActor` de `ZeroCore` es `Store`, por la confinación de `ModelContext` de
+  SwiftData.
+- Los 7 `MainActor.run` del runtime tocan exclusivamente `store`: seis son transiciones de ciclo de
+  vida de sesión (una vez por sesión) y uno es la persistencia por lotes de eventos.
+- Verificado por test, no por inspección: *"decoding a real stream never runs on the main thread"*
+  usa un decoder espía que registra `Thread.isMainThread` en cada llamada y asevera que ninguna
+  devuelve `true`. Ese test falla si alguien vuelve a poner el runtime en el main actor.
+
+## G3 — Contenido del bundle
+
+```
+Zero.app/Contents/Info.plist
+Zero.app/Contents/MacOS/Zero
+Zero.app/Contents/MacOS/zero-permission-hook
+Zero.app/Contents/_CodeSignature/CodeResources
+```
+
+4,3 MB. Sin Node, sin Electron, sin frameworks embebidos, sin Chromium. El helper de permisos viaja
+dentro porque la app le pasa su ruta absoluta al CLI del proveedor.

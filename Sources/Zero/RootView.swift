@@ -25,6 +25,7 @@ struct RootView: View {
             }
         }
         .zeroSurface(scheme)
+        .onAppear { StartupClock.reportFirstFrame() }
         .sheet(isPresented: $showingNewSession) {
             NewSessionSheet(coordinator: coordinator)
         }

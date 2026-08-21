@@ -1,0 +1,9 @@
+{
+  "version": "2026-08-21",
+  "note": "Per million tokens, USD. Only for providers that do not report cost themselves; Claude Code reports total_cost_usd and that figure always wins. A model absent from this table yields an unknown cost, never an estimate of zero.",
+  "models": [
+    { "match": "claude-opus-5",  "input": 15.0, "output": 75.0, "cacheRead": 1.5,  "cacheWrite": 18.75 },
+    { "match": "claude-sonnet-5", "input": 3.0,  "output": 15.0, "cacheRead": 0.3,  "cacheWrite": 3.75 },
+    { "match": "claude-haiku-4-5", "input": 1.0, "output": 5.0,  "cacheRead": 0.1,  "cacheWrite": 1.25 }
+  ]
+}

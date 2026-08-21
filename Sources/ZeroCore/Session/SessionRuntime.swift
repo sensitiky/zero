@@ -515,7 +515,11 @@ public actor SessionRuntime {
     // MARK: - Persistence
 
     /// Persists a batch of events to the store and flushes to disk.
-    /// This is the ONLY place persistence happens, and it uses ONE MainActor.run hop
+    /// Persists a batch of transcript events in one main-actor hop.
+    ///
+    /// The batch is the point: `Store` is `@MainActor`, so a hop per event would put the main thread
+    /// on the critical path of every token. Session lifecycle transitions hop separately, but those
+    /// happen once per session rather than once per event.
     /// to fetch the session, do all appends, and call flush().
     private func persistAndFlush(_ events: [AgentEvent]) async {
         // All store operations in one MainActor hop

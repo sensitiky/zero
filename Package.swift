@@ -13,6 +13,7 @@ let package = Package(
     targets: [
         .target(
             name: "ZeroCore",
+            resources: [.copy("Resources/pricing.json")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(
