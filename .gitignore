@@ -7,3 +7,4 @@ xcuserdata/
 .swiftpm/
 .build-*/
 .claude/worktrees/
+build/

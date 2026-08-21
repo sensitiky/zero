@@ -6,12 +6,18 @@ let package = Package(
     platforms: [.macOS("26.0")],
     products: [
         .library(name: "ZeroCore", targets: ["ZeroCore"]),
+        .executable(name: "Zero", targets: ["Zero"]),
         .executable(name: "zero-probe", targets: ["zero-probe"]),
         .executable(name: "zero-permission-hook", targets: ["zero-permission-hook"]),
     ],
     targets: [
         .target(
             name: "ZeroCore",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .executableTarget(
+            name: "Zero",
+            dependencies: ["ZeroCore"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(
