@@ -13,25 +13,44 @@ public actor SessionRuntime {
         public var model: String
         public var prompt: String
         public var resumeSessionId: String?  // if resuming, the provider's session id
+        /// Whether the caller has been told about uncommitted changes and chose to continue.
+        ///
+        /// No defaulted boolean: FR-8's confirmation has to be something the caller states, and a
+        /// parameter that defaults to "go ahead" is how a confirmation quietly stops being one.
+        public var dirtyRepository: DirtyRepositoryPolicy = .refuse
 
         public init(
             repository: URL,
             provider: ProviderDescriptor,
             model: String,
             prompt: String,
-            resumeSessionId: String? = nil
+            resumeSessionId: String? = nil,
+            dirtyRepository: DirtyRepositoryPolicy = .refuse
         ) {
             self.repository = repository
             self.provider = provider
             self.model = model
             self.prompt = prompt
             self.resumeSessionId = resumeSessionId
+            self.dirtyRepository = dirtyRepository
         }
+    }
+
+    /// What to do when the target repository has uncommitted changes.
+    public enum DirtyRepositoryPolicy: Sendable, Equatable {
+        /// Stop and report, so the caller can ask the user.
+        case refuse
+        /// The user was shown what it means and chose to continue.
+        case proceedAcknowledged
     }
 
     /// Reasons creation might fail.
     public enum CreationError: Error, Sendable, CustomStringConvertible {
-        /// Repository is dirty and cannot be used for a session.
+        /// The repository has uncommitted changes and the caller has not acknowledged it.
+        ///
+        /// Not a failure so much as a question: FR-8 says the app reports this and asks. Creating the
+        /// worktree anyway is safe — `git worktree add` leaves uncommitted work in the main checkout
+        /// — but the agent will not see that work, which is worth knowing before you start.
         case repositoryIsDirty(path: String)
         /// Provider could not be resolved or started.
         case providerError(String)
@@ -45,7 +64,10 @@ public actor SessionRuntime {
         public var description: String {
             switch self {
             case .repositoryIsDirty(let path):
-                return "Repository at \(path) has uncommitted changes"
+                return """
+                \(path) has uncommitted changes. They stay in your checkout and will not be part of \
+                the session, so the agent will not see them.
+                """
             case .providerError(let msg):
                 return "Provider: \(msg)"
             case .gitError(let msg):
@@ -149,7 +171,7 @@ public actor SessionRuntime {
             throw CreationError.gitError(String(describing: error))
         }
 
-        if isDirty {
+        if isDirty, config.dirtyRepository == .refuse {
             throw CreationError.repositoryIsDirty(path: config.repository.path)
         }
 

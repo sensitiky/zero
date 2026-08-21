@@ -25,6 +25,18 @@ final class SessionCoordinator {
 
     var lastError: String?
 
+    /// A start that stopped to ask about uncommitted changes, held so it can be retried on a yes.
+    struct DirtyRepositoryPrompt: Identifiable {
+        let id = UUID()
+        let message: String
+        let repository: URL
+        let provider: ProviderDescriptor
+        let model: String
+        let prompt: String
+    }
+
+    var dirtyRepositoryPrompt: DirtyRepositoryPrompt?
+
     init(model: AppModel) {
         self.model = model
     }
@@ -74,7 +86,13 @@ final class SessionCoordinator {
         return panel.runModal() == .OK ? panel.url : nil
     }
 
-    func startSession(repository: URL, provider: ProviderDescriptor, model modelName: String, prompt: String) async {
+    func startSession(
+        repository: URL,
+        provider: ProviderDescriptor,
+        model modelName: String,
+        prompt: String,
+        dirtyRepository: SessionRuntime.DirtyRepositoryPolicy = .refuse
+    ) async {
         do {
             let store = try currentStore()
             let broker = try await currentBroker()
@@ -83,7 +101,8 @@ final class SessionCoordinator {
                     repository: repository,
                     provider: provider,
                     model: modelName,
-                    prompt: prompt
+                    prompt: prompt,
+                    dirtyRepository: dirtyRepository
                 ),
                 store: store,
                 providerRegistry: registry
@@ -110,11 +129,42 @@ final class SessionCoordinator {
             )
             model.selection = .session(id)
             pump(runtime, id: id)
+        } catch SessionRuntime.CreationError.repositoryIsDirty(let path) {
+            // A question, not a failure. Holding the request means answering yes costs one click
+            // rather than retyping the task.
+            dirtyRepositoryPrompt = DirtyRepositoryPrompt(
+                message: SessionRuntime.CreationError.repositoryIsDirty(path: path).description,
+                repository: repository,
+                provider: provider,
+                model: modelName,
+                prompt: prompt
+            )
         } catch let error as SessionRuntime.CreationError {
             lastError = error.description
         } catch {
             lastError = String(describing: error)
         }
+    }
+
+    /// Retries a start the user just approved despite the uncommitted changes.
+    func confirmDirtyRepositoryStart() async {
+        guard let pending = dirtyRepositoryPrompt else { return }
+        dirtyRepositoryPrompt = nil
+        await startSession(
+            repository: pending.repository,
+            provider: pending.provider,
+            model: pending.model,
+            prompt: pending.prompt,
+            dirtyRepository: .proceedAcknowledged
+        )
+    }
+
+    func cancelDirtyRepositoryStart() {
+        // The task is put back so it is not lost to a dialog the user declined.
+        if let pending = dirtyRepositoryPrompt {
+            model.composerText = pending.prompt
+        }
+        dirtyRepositoryPrompt = nil
     }
 
     /// Feeds one runtime's transcript into the model.

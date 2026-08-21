@@ -500,4 +500,71 @@ struct SessionRuntimeTests {
         }
     }
 
+
+    // MARK: - FR-8 — a dirty repository is a question, not a dead end
+
+    @Test("an acknowledged dirty repository gets past the check")
+    func acknowledgedDirtyRepoProceeds() async throws {
+        let store = try createTestStore()
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let git = Process()
+        git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        git.arguments = ["init", "-q", repo.path]
+        try git.run()
+        git.waitUntilExit()
+        try "uncommitted".write(
+            to: repo.appendingPathComponent("dirty.txt"), atomically: true, encoding: .utf8
+        )
+
+        // A provider that cannot resolve, so the test proves the dirty gate opened without launching
+        // a real agent: with `.refuse` the failure is the dirty check, with `.proceedAcknowledged` it
+        // is the provider. Different error, same call — that is the gate moving.
+        let missing = ProviderDescriptor(
+            id: "definitely-not-installed",
+            displayName: "Nothing",
+            executableCandidates: ["definitely-not-installed"],
+            versionCommand: ["--version"],
+            minimumVersion: "0.0.0",
+            launchArguments: []
+        )
+
+        await #expect(throws: SessionRuntime.CreationError.self) {
+            _ = try await SessionRuntime.create(
+                with: .init(repository: repo, provider: missing, model: "m", prompt: "t"),
+                store: store,
+                providerRegistry: ProviderRegistry()
+            )
+        }
+
+        do {
+            _ = try await SessionRuntime.create(
+                with: .init(
+                    repository: repo,
+                    provider: missing,
+                    model: "m",
+                    prompt: "t",
+                    dirtyRepository: .proceedAcknowledged
+                ),
+                store: store,
+                providerRegistry: ProviderRegistry()
+            )
+            Issue.record("expected the provider to fail, not the dirty check")
+        } catch SessionRuntime.CreationError.repositoryIsDirty {
+            Issue.record("acknowledging the dirty repository did not get past the check")
+        } catch {
+            // Any other failure means the gate opened, which is what this asserts.
+        }
+    }
+
+    @Test("the dirty repository message says the work stays put")
+    func dirtyMessageExplainsTheConsequence() {
+        // The consequence is that the agent will not see the uncommitted work, not that anything is
+        // at risk. A generic warning here would make the user worry about the wrong thing.
+        let message = SessionRuntime.CreationError.repositoryIsDirty(path: "/tmp/x").description
+        #expect(message.contains("/tmp/x"))
+        #expect(message.lowercased().contains("not be part of the session"))
+    }
+
 }
