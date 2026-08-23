@@ -48,6 +48,13 @@ public struct Transcript: Sendable, Equatable {
         openAssistantEntryID = nil
     }
 
+    /// Appends a plain notice — same shape the rate-limit path already produces, for anything else
+    /// that is a fact about the session rather than agent output.
+    public mutating func appendNotice(_ text: String) {
+        entries.append(.notice(id: UUID(), text: text))
+        openAssistantEntryID = nil
+    }
+
     /// Applies one event. Returns the session state it implies, or nil if the event does not change it.
     @discardableResult
     public mutating func apply(_ event: AgentEvent) -> SessionState? {
