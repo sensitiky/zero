@@ -23,6 +23,19 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/Zero" "$APP/Contents/MacOS/ZeroPreview"
 cp "$BIN/zero-permission-hook" "$APP/Contents/MacOS/zero-permission-hook"
 
+# Same resource copy as make-app.sh, and for the same reason: this script never shipped
+# pricing.json at all, so the preview only ever rendered real costs because the build path baked
+# into the binary happens to exist on the machine that built it. Without it the usage ring reads
+# "unknown" everywhere, and a preview that stops matching production is worse than no preview
+# (docs/DESIGN.md). See docs/bugs/002-bundle-module-lookup-path.
+for bundle in "$BIN"/*.bundle; do
+    [ -e "$bundle" ] || continue
+    case "$(basename "$bundle")" in
+        *Tests.bundle) continue ;;
+    esac
+    cp -R "$bundle"/* "$APP/Contents/Resources/"
+done
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
