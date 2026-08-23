@@ -26,7 +26,7 @@ Consecuencia: hay dos superficies de verificación desde la Fase A.
 
 ### Phase A — Scaffolding
 
-- [ ] **A1** Proyecto Xcode `Zero.xcodeproj`: app SwiftUI, bundle id `tech.incu.zero`, deployment target macOS 26.0, `ARCHS = arm64`.
+- [ ] **A1** Proyecto Xcode `Zero.xcodeproj`: app SwiftUI, bundle id `the.stool.zero`, deployment target macOS 26.0, `ARCHS = arm64`.
 - [ ] **A2** Swift 6 strict concurrency en modo completo, warnings como errores, `.swift-version` fijado a 6.3.3, versión de Xcode documentada en el README.
 - [ ] **A3** Targets: `Zero` (app), `ZeroCore` (lógica, sin UI), `ZeroCoreTests`, `zero-probe` (ejecutable de verificación manual). Todo el transporte y los adapters viven en `ZeroCore` para que sean testeables sin arrancar la app.
 - [ ] **A4** `Tests/Fixtures/` con la estructura por proveedor, vacía de momento.
@@ -92,22 +92,22 @@ turno completo contra el CLI real vía `zero-probe`.
 
 Regla del proceso: cada FR mapea al menos a un test. Cobertura declarada:
 
-| Área | Tests | FRs |
-|---|---|---|
-| `NDJSONStream` | línea partida entre chunks, línea vacía, JSON inválido no tira el stream, línea muy grande, EOF a media línea | FR-9 |
-| `ClaudeCodeAdapter` | decode de fixtures a `AgentEvent`, correlación `control_request`/`control_response`, denegación, evento de uso | FR-10, FR-13, FR-23, FR-28 |
-| `CodexAdapter` | decode de fixtures, correlación JSON-RPC por id, ciclo de aprobación | FR-11, FR-13, FR-23 |
-| `ACPAdapter` | handshake, `session/update` en sus variantes, `session/request_permission` | FR-12, FR-13, FR-23 |
-| `AgentProcess` | arranque, stdin persiste entre turnos, muerte del hijo → error con historial intacto, cancelación no mata el proceso | FR-9, FR-15, FR-16 |
-| `ProviderRegistry` | binario ausente, versión no soportada, sin auth → razón legible; rechazo de ruta no validada | FR-14 |
-| Log de protocolo | apagado por defecto; con log activo, ninguna credencial aparece en el output | FR-17 |
-| Persistencia | round-trip de sesión con historial, restauración al arrancar, resume y su degradación | FR-6, FR-7 |
-| Benchmark de append | 10k `Message` + 10k `UsageRecord`, p95 y memoria | C2, decisión SwiftData/SQLite |
-| `GitService` | sobre repo temporal: worktree add/remove, colisión de rama → sufijo, repo sucio detectado, ruta fuera de la raíz rechazada | FR-2, FR-5, FR-8 |
-| Estado de sesión | cada evento produce la transición esperada | FR-3, FR-4 |
-| Permisos | una resolución solo se origina en acción del usuario o regla previa; contenido de tool output no puede aprobar ni escalar | **FR-25** |
-| Costo | uso acumulado correcto; precio ausente → desconocido, no estimado | FR-29, FR-30, FR-31 |
-| Rendimiento (medición, no test) | cold start, memoria con 5 sesiones, fps con 3 streams | NFR |
+| Área                            | Tests                                                                                                                      | FRs                           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `NDJSONStream`                  | línea partida entre chunks, línea vacía, JSON inválido no tira el stream, línea muy grande, EOF a media línea              | FR-9                          |
+| `ClaudeCodeAdapter`             | decode de fixtures a `AgentEvent`, correlación `control_request`/`control_response`, denegación, evento de uso             | FR-10, FR-13, FR-23, FR-28    |
+| `CodexAdapter`                  | decode de fixtures, correlación JSON-RPC por id, ciclo de aprobación                                                       | FR-11, FR-13, FR-23           |
+| `ACPAdapter`                    | handshake, `session/update` en sus variantes, `session/request_permission`                                                 | FR-12, FR-13, FR-23           |
+| `AgentProcess`                  | arranque, stdin persiste entre turnos, muerte del hijo → error con historial intacto, cancelación no mata el proceso       | FR-9, FR-15, FR-16            |
+| `ProviderRegistry`              | binario ausente, versión no soportada, sin auth → razón legible; rechazo de ruta no validada                               | FR-14                         |
+| Log de protocolo                | apagado por defecto; con log activo, ninguna credencial aparece en el output                                               | FR-17                         |
+| Persistencia                    | round-trip de sesión con historial, restauración al arrancar, resume y su degradación                                      | FR-6, FR-7                    |
+| Benchmark de append             | 10k `Message` + 10k `UsageRecord`, p95 y memoria                                                                           | C2, decisión SwiftData/SQLite |
+| `GitService`                    | sobre repo temporal: worktree add/remove, colisión de rama → sufijo, repo sucio detectado, ruta fuera de la raíz rechazada | FR-2, FR-5, FR-8              |
+| Estado de sesión                | cada evento produce la transición esperada                                                                                 | FR-3, FR-4                    |
+| Permisos                        | una resolución solo se origina en acción del usuario o regla previa; contenido de tool output no puede aprobar ni escalar  | **FR-25**                     |
+| Costo                           | uso acumulado correcto; precio ausente → desconocido, no estimado                                                          | FR-29, FR-30, FR-31           |
+| Rendimiento (medición, no test) | cold start, memoria con 5 sesiones, fps con 3 streams                                                                      | NFR                           |
 
 Los FR de UI que no admiten test unitario razonable — FR-18 a FR-22, FR-26, FR-27, y la
 accesibilidad — van a la lista manual de abajo, y así queda dicho en vez de fingir cobertura.

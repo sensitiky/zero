@@ -24,13 +24,26 @@ cp "$BIN/Zero" "$APP/Contents/MacOS/Zero"
 # it has to travel with the app rather than be found on the system.
 cp "$BIN/zero-permission-hook" "$APP/Contents/MacOS/zero-permission-hook"
 
+# Targets that declare `resources:` in Package.swift (e.g. ZeroCore's pricing.json) get compiled
+# into a sibling *.bundle next to the binary, not embedded in it. Bundle.module finds that sibling
+# fine under `swift run`/`swift test`, but once the binary is copied out into Zero.app it has to
+# be copied too, or Bundle.module fatalErrors at runtime (see docs/bugs/001-dmg-resource-bundle-crash).
+# Test-target bundles aren't a runtime dependency of the shipped app.
+for bundle in "$BIN"/*.bundle; do
+    [ -e "$bundle" ] || continue
+    case "$(basename "$bundle")" in
+        *Tests.bundle) continue ;;
+    esac
+    cp -R "$bundle" "$APP/Contents/Resources/"
+done
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key><string>Zero</string>
-    <key>CFBundleIdentifier</key><string>tech.incu.zero</string>
+    <key>CFBundleIdentifier</key><string>the.stool.zero</string>
     <key>CFBundleName</key><string>Zero</string>
     <key>CFBundleDisplayName</key><string>Zero</string>
     <key>CFBundlePackageType</key><string>APPL</string>

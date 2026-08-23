@@ -29,7 +29,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key><string>ZeroPreview</string>
-    <key>CFBundleIdentifier</key><string>tech.incu.zero.preview</string>
+    <key>CFBundleIdentifier</key><string>the.stool.zero.preview</string>
     <key>CFBundleName</key><string>Zero Preview</string>
     <key>CFBundleDisplayName</key><string>Zero Preview</string>
     <key>CFBundlePackageType</key><string>APPL</string>
