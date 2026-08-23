@@ -23,7 +23,7 @@ public actor ProtocolLog: Sendable {
     private let maxSizeBytes: Int
     private let redactor: Redactor
     private let writeQueue = DispatchQueue(
-        label: "tech.incu.zero.protocol-log",
+        label: "the.stool.zero.protocol-log",
         qos: .background
     )
     private var isEnabled: Bool = false
