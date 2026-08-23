@@ -458,6 +458,79 @@ struct SessionRuntimeTests {
     }
 
 
+    // MARK: - Permission mode: in-band response (Codex/ACP)
+
+    @Test("resolvePermission sends Codex's encoded response back over stdin")
+    func resolvePermissionSendsCodexResponse() async throws {
+        // The regression this closes: answering a Codex/ACP permission prompt in the UI never
+        // reached the process at all (see 003-permission-modes, Phase B) — the option the user
+        // picked had nowhere to go, so the agent stayed blocked no matter what was clicked.
+        let store = try createTestStore()
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try makeRepository(at: repo)
+
+        let capture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("zero-stdin-capture-\(UUID().uuidString.prefix(8)).json")
+        defer { try? FileManager.default.removeItem(at: capture) }
+        let stub = try makeStdinCapturingStub(writingTo: capture)
+        defer { try? FileManager.default.removeItem(at: stub) }
+
+        let session = try store.createSession(
+            repository: nil, provider: "codex", model: "m",
+            worktreePath: repo.path, branch: "zero/resolve-permission-codex"
+        )
+        let runtime = SessionRuntime(
+            sessionID: session.id,
+            process: AgentProcess(configuration: .init(
+                executable: stub, arguments: [], environment: [:], workingDirectory: repo
+            )),
+            store: store,
+            gitService: try GitService(repositoryPath: repo),
+            decoder: CodexDecoder(),
+            encoder: CodexEncoder(),
+            providerRegistry: ProviderRegistry()
+        )
+        try await runtime.start()
+        try await runtime.resolvePermission(requestID: "42", optionID: "accept", origin: .userAction)
+        await runtime.closeStdin()
+        await runtime.waitUntilFinished()
+
+        let written = try String(contentsOf: capture, encoding: .utf8)
+        #expect(written.contains("\"id\":\"42\""))
+        #expect(written.contains("\"decision\":\"accept\""))
+    }
+
+    @Test("resolvePermission throws for Claude Code — it has no in-band channel")
+    func resolvePermissionThrowsForClaudeCode() async throws {
+        // Claude Code's requests resolve through PermissionBroker's hook socket, never through
+        // this method — asserting the throw keeps that boundary from silently drifting.
+        let store = try createTestStore()
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try makeRepository(at: repo)
+
+        let session = try store.createSession(
+            repository: nil, provider: "claude", model: "m",
+            worktreePath: repo.path, branch: "zero/resolve-permission-claude"
+        )
+        let runtime = SessionRuntime(
+            sessionID: session.id,
+            process: AgentProcess(configuration: .init(
+                executable: URL(fileURLWithPath: "/usr/bin/true"),
+                arguments: [], environment: [:], workingDirectory: repo
+            )),
+            store: store,
+            gitService: try GitService(repositoryPath: repo),
+            decoder: ClaudeCodeDecoder(),
+            encoder: ClaudeCodeEncoder(),
+            providerRegistry: ProviderRegistry()
+        )
+        await #expect(throws: (any Error).self) {
+            try await runtime.resolvePermission(requestID: "1", optionID: "allow_once", origin: .userAction)
+        }
+    }
+
     // MARK: - Workspace
 
     @Test("a session in the current checkout runs where the uncommitted work is")
@@ -538,6 +611,20 @@ struct SessionRuntimeTests {
         return path
     }
 
+    /// A stand-in that captures exactly what it reads from stdin into a file, for observing what
+    /// `resolvePermission` actually sends. Not an echo to stdout: the payload is a well-formed
+    /// Codex JSON-RPC response, so `CodexDecoder` would consume it as one instead of surfacing it
+    /// as `.unrecognized` — capturing the raw bytes before the decoder ever sees them is what
+    /// actually asserts on what was sent, not on how the decoder happens to interpret it.
+    private func makeStdinCapturingStub(writingTo outputPath: URL) throws -> URL {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("zero-stdin-capture-\(UUID().uuidString.prefix(8)).sh")
+        let script = "#!/bin/sh\ncat > \(HookSettings.shellQuoted(outputPath.path))\n"
+        try script.write(to: path, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path.path)
+        return path
+    }
+
     private func makeRepository(at url: URL) throws {
         for arguments in [["init", "-q", url.path],
                           ["-C", url.path, "commit", "-q", "--allow-empty", "-m", "base"]] {
@@ -600,6 +687,87 @@ struct SessionRuntimeTests {
         #expect(echoed.contains("--settings"))
         #expect(echoed.contains("PreToolUse"))
         #expect(echoed.contains("zero-permission-hook"))
+    }
+
+    @Test("create() in .auto mode narrows the hook to network tools and adds --permission-mode auto")
+    func createAutoModeNarrowsHook() async throws {
+        let store = try createTestStore()
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try makeRepository(at: repo)
+
+        let stub = try makeArgvEchoingStub()
+        defer { try? FileManager.default.removeItem(at: stub) }
+        let registry = ProviderRegistry(
+            resolveExecutable: { _, _ in stub },
+            getVersion: { _, _ in "2.1.237 (Claude Code)" }
+        )
+        let socketsDir = URL(fileURLWithPath: "/tmp/zs-\(UUID().uuidString.prefix(8))")
+        let broker = PermissionBroker(socketsDirectory: socketsDir) { _ in
+            .init(decision: .deny, origin: .userAction)
+        }
+
+        let runtime = try await SessionRuntime.create(
+            with: .init(repository: repo, provider: .claude, model: "m", prompt: "t", permissionMode: .auto),
+            store: store,
+            providerRegistry: registry,
+            permissionSetup: .init(broker: broker, helperPath: "/path/to/zero-permission-hook")
+        )
+        await runtime.closeStdin()
+
+        var echoed = ""
+        for await event in runtime.transcript {
+            if case .unrecognized(let raw) = event { echoed += String(decoding: raw, as: UTF8.self) }
+        }
+        await runtime.waitUntilFinished()
+        await broker.stopAll()
+
+        #expect(echoed.contains("--permission-mode auto"))
+        #expect(echoed.contains("--settings"))
+        // The hook is still installed — for WebFetch/WebSearch — just narrowed: the matcher Zero
+        // wrote into --settings is autoMatcher, not the broad askMatcher.
+        #expect(echoed.contains(HookSettings.autoMatcher))
+        #expect(!echoed.contains(HookSettings.askMatcher))
+    }
+
+    @Test("create() in .bypass mode installs no hook at all and adds --permission-mode bypassPermissions")
+    func createBypassModeInstallsNoHook() async throws {
+        let store = try createTestStore()
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try makeRepository(at: repo)
+
+        let stub = try makeArgvEchoingStub()
+        defer { try? FileManager.default.removeItem(at: stub) }
+        let registry = ProviderRegistry(
+            resolveExecutable: { _, _ in stub },
+            getVersion: { _, _ in "2.1.237 (Claude Code)" }
+        )
+        let socketsDir = URL(fileURLWithPath: "/tmp/zs-\(UUID().uuidString.prefix(8))")
+        let broker = PermissionBroker(socketsDirectory: socketsDir) { _ in
+            .init(decision: .deny, origin: .userAction)
+        }
+
+        let runtime = try await SessionRuntime.create(
+            with: .init(repository: repo, provider: .claude, model: "m", prompt: "t", permissionMode: .bypass),
+            store: store,
+            providerRegistry: registry,
+            // Passed anyway, the way a real caller always would: .bypass must ignore it rather
+            // than depend on the caller remembering to omit it.
+            permissionSetup: .init(broker: broker, helperPath: "/path/to/zero-permission-hook")
+        )
+        await runtime.closeStdin()
+
+        var echoed = ""
+        for await event in runtime.transcript {
+            if case .unrecognized(let raw) = event { echoed += String(decoding: raw, as: UTF8.self) }
+        }
+        await runtime.waitUntilFinished()
+        await broker.stopAll()
+
+        #expect(echoed.contains("--permission-mode bypassPermissions"))
+        #expect(!echoed.contains("--settings"))
+        #expect(!echoed.contains("PreToolUse"))
     }
 
     @Test("the session's socket exists before the process would need it")

@@ -150,7 +150,10 @@ enum PreviewData {
     ) -> AppModel.SessionSnapshot {
         var session = AppModel.SessionSnapshot(
             id: UUID(), projectID: repo, title: title, provider: "Claude Code", model: "claude-sonnet-5",
-            branch: branch, workspace: .isolatedWorktree, state: .idle, initialPrompt: title
+            branch: branch, workspace: .isolatedWorktree, state: .idle, initialPrompt: title,
+            // .auto, not the .ask default: the preview should show all three modes at least once
+            // (see docs/DESIGN.md's "every UI change updates the preview too").
+            permissionMode: .auto
         )
         session.transcript.appendUserMessage(title)
         session.transcript.apply(.textDelta("I'll reproduce it first, then look at what's flaky about the teardown."))
@@ -190,7 +193,8 @@ enum PreviewData {
             id: UUID(), projectID: repo, title: "Add OpenAPI docs for /webhooks",
             provider: "Codex", model: "gpt-5.1-codex",
             branch: "zero/openapi-webhooks-1d3", workspace: .isolatedWorktree, state: .finished,
-            initialPrompt: "Document the /webhooks endpoints in the OpenAPI spec."
+            initialPrompt: "Document the /webhooks endpoints in the OpenAPI spec.",
+            permissionMode: .bypass
         )
         session.transcript.appendUserMessage(session.initialPrompt)
         session.transcript.apply(.textDelta("Added the three /webhooks routes to openapi.yaml with request and response schemas."))

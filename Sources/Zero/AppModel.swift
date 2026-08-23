@@ -45,6 +45,9 @@ final class AppModel {
         var transcript = Transcript()
         /// The opening request, so a session that has not replied yet still says what it is for.
         var initialPrompt: String
+        /// How this session decides tool-call permissions. Changed only through
+        /// `SessionCoordinator.setPermissionMode`, never inferred from an event.
+        var permissionMode: PermissionMode = .ask
 
         var events: [Transcript.Entry] { transcript.entries }
         var usage: Usage { transcript.usage }
@@ -159,4 +162,18 @@ final class AppModel {
         sessions[index].state = .running
     }
 
+    /// Records the mode a relaunch is about to run under. `SessionCoordinator` calls this once the
+    /// new mode is persisted — it does not itself decide whether a relaunch degrades to read-only.
+    func setPermissionMode(_ mode: PermissionMode, for sessionID: UUID) {
+        guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        sessions[index].permissionMode = mode
+    }
+
+    /// Appends a plain notice, for state transitions that are not agent output — a relaunch that
+    /// degraded to read-only, for instance. Same `Transcript.Entry.notice` case rate-limit notices
+    /// already use, not a new kind of entry for one caller.
+    func appendNotice(_ text: String, to sessionID: UUID) {
+        guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        sessions[index].transcript.appendNotice(text)
+    }
 }

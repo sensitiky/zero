@@ -253,6 +253,18 @@ struct PermissionBrokerTests {
         #expect(command.contains("'/tmp/a b/s.sock'"))
     }
 
+    @Test("askMatcher gates every configured tool including WebSearch; autoMatcher gates only the network ones")
+    func matchersByMode() throws {
+        for tool in ["Bash", "Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch"] {
+            #expect(HookSettings.askMatcher.range(of: tool) != nil)
+        }
+        for tool in ["Bash", "Write", "Edit", "NotebookEdit"] {
+            #expect(HookSettings.autoMatcher.range(of: tool) == nil)
+        }
+        #expect(HookSettings.autoMatcher.range(of: "WebFetch") != nil)
+        #expect(HookSettings.autoMatcher.range(of: "WebSearch") != nil)
+    }
+
     // MARK: - Framing
 
     @Test("a frame split across reads reassembles")
