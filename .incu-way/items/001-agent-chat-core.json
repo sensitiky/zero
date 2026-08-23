@@ -231,7 +231,7 @@
     "providers-v1": "Claude Code (stream-json) + Codex (app-server) + ACP genérico",
     "distribution": "DMG notarizado, Hardened Runtime, fuera del App Sandbox",
     "branch-model": "main + develop, features en feat/{slug}",
-    "product-name": "Zero (bundle id tech.incu.zero)",
+    "product-name": "Zero (bundle id the.stool.zero)",
     "repo-visibility": "privado, uso propio, sin licencia pública en v1",
     "deployment-target": "macOS 26.0, Apple Silicon only, cero @available",
     "persistence": "SwiftData con puerta de medición en Fase B; sin capa de abstracción especulativa",

@@ -86,13 +86,14 @@ Fuera de v1, explícitamente:
   abierto, viendo tus cambios sin commitear. La alternativa explícita es un worktree aislado, que
   parte del último commit y corre al lado de tu trabajo en vez de dentro.
 
-  *Revisado el 2026-08-21.* La versión original decía que la app avisara de los cambios sin
+  _Revisado el 2026-08-21._ La versión original decía que la app avisara de los cambios sin
   commitear y pidiera confirmación antes de crear el worktree. Estaba mal planteado: copiaba el
   modelo de un worktree por tarea de herramientas pensadas para lanzar agentes a tareas
   independientes, y eso hace imposible el caso ordinario — estás a medio cambio y quieres que el
-  agente siga *ese* cambio. Un worktree parte del árbol commiteado, así que por construcción no
+  agente siga _ese_ cambio. Un worktree parte del árbol commiteado, así que por construcción no
   puede ver nada sin commitear. No era un aviso que faltara redactar mejor, era el default
   equivocado.
+
 - **FR-8b** — Solo una sesión viva por checkout. Dos agentes editando los mismos archivos a la vez
   se sobreescriben, y eso es precisamente lo que un worktree resuelve. El rechazo nombra la
   alternativa en vez de ser un muro.
@@ -119,7 +120,7 @@ Fuera de v1, explícitamente:
 - **FR-23** — Las peticiones de permiso se presentan como control nativo in-chat con el detalle completo de la operación y las acciones permitir una vez / permitir siempre / denegar. El mecanismo de transporte difiere por proveedor y no es uniforme: Codex y ACP lo exponen en su protocolo, Claude Code requiere el broker de FR-32.
 - **FR-24** — Modo de permisos configurable por sesión, con el default más restrictivo de los disponibles.
 
-  *Revisado el 2026-08-21, dos veces.* Primero se introdujo un clasificador de riesgo propio
+  _Revisado el 2026-08-21, dos veces._ Primero se introdujo un clasificador de riesgo propio
   (FR-36/37/38 más abajo, ya retirados) para separar rutina de crítico. Se descartó: duplicaba en
   regex un juicio que Claude Code ya hace mejor y con contexto real. Verificado contra el CLI real
   (2.1.237): `--permission-mode auto` sin ningún hook nuestro deja pasar comandos benignos y
@@ -134,19 +135,20 @@ Fuera de v1, explícitamente:
 
   Con eso verificado, el reparto final: Bash, Write, Edit y NotebookEdit quedan enteramente bajo
   `--permission-mode auto` de Claude Code, sin que el hook de Zero los intercepte — un `DROP
-  TABLE` vía Bash queda a criterio de Claude, sin que el usuario lo vea. Solo `WebFetch`/
+TABLE` vía Bash queda a criterio de Claude, sin que el usuario lo vea. Solo `WebFetch`/
   `WebSearch` siguen pasando por la UI nativa (ver FR-32), porque un fetch de red no le parece
   arriesgado a un clasificador de uso de herramientas, pero sigue siendo un vector de exfiltración
   de lo que el agente ya haya leído — un juicio de producto que `auto` no tiene forma de hacer.
+
 - **FR-25** — Una petición de permiso solo se resuelve por acción explícita del usuario o por una regla que el usuario configuró antes. Nada en el output del modelo o de una herramienta puede aprobar, escalar ni ampliar un permiso.
 - **FR-26** — Todo el transcript admite selección, copia y búsqueda incremental.
 - **FR-27** — La app es operable enteramente por teclado, incluida la creación de sesiones, el cambio entre ellas y la respuesta a permisos.
 
 ### Delegar en el juicio de Claude Code — FR-36 (retirado y reemplazado el mismo día)
 
-*Añadido el 2026-08-21 como `CommandRiskClassifier`, retirado horas después a pedido del mismo
+_Añadido el 2026-08-21 como `CommandRiskClassifier`, retirado horas después a pedido del mismo
 usuario: "el harness debería tener los mismos permisos que tiene Claude en modo auto, esta capa
-extra es innecesaria."*
+extra es innecesaria."_
 
 Un clasificador de riesgo propio (regex sobre el comando de Bash y la ruta de Write/Edit) llegó a
 existir brevemente. Se descartó por duplicar, peor y sin contexto, un juicio que
@@ -192,13 +194,13 @@ Medido en Apple Silicon, build release, macOS 26:
 
 Toolchain de referencia, verificado en la máquina de desarrollo:
 
-| | Versión |
-|---|---|
-| macOS | 26.5.2 (build 25F84) |
-| Swift | 6.3.3 (swiftlang-6.3.3.1.3) |
-| Xcode | 26.6 (build 17F113) |
-| SDK | macOS 26.5 — el único instalado |
-| Target triple | `arm64-apple-macosx26.0` |
+|               | Versión                         |
+| ------------- | ------------------------------- |
+| macOS         | 26.5.2 (build 25F84)            |
+| Swift         | 6.3.3 (swiftlang-6.3.3.1.3)     |
+| Xcode         | 26.6 (build 17F113)             |
+| SDK           | macOS 26.5 — el único instalado |
+| Target triple | `arm64-apple-macosx26.0`        |
 
 - **Deployment target: macOS 26.0.** Es el default del toolchain instalado y la propuesta del PRD. Consecuencia deliberada: cero ramas de `@available` en todo el código, y acceso directo al SwiftUI y al lenguaje de diseño de macOS 26 sin fallbacks. Coste: excluye macOS 15 y anteriores. Ver Open Questions — la decisión depende de si el repo es público.
 - Swift 6 con strict concurrency activado en modo completo. Los adapters son el núcleo concurrente de la app (un subproceso, dos pipes y un stream por sesión), así que el aislamiento lo verifica el compilador y no la revisión.
@@ -254,10 +256,10 @@ versión, no una reimplementación.
 
 Dos tokens, tomados del logo. **Ni negro puro ni blanco puro aparecen en la app.**
 
-| Token | Valor | Rol en tema oscuro | Rol en tema claro |
-|---|---|---|---|
-| `ink` | `#131313` | fondo | texto y glifos |
-| `paper` | `#f3f3f3` | texto y glifos | fondo |
+| Token   | Valor     | Rol en tema oscuro | Rol en tema claro |
+| ------- | --------- | ------------------ | ----------------- |
+| `ink`   | `#131313` | fondo              | texto y glifos    |
+| `paper` | `#f3f3f3` | texto y glifos     | fondo             |
 
 Los dos roles se invierten con el tema; no hay una tercera pareja de valores. El contraste es
 **16.74:1**, frente al 21:1 de `#000`/`#fff` — por debajo del máximo teórico y muy por encima del
@@ -277,7 +279,7 @@ anota por qué se eligió, para que revertirla sea una decisión y no un descubr
 - **Persistencia: SwiftData, con puerta de medición en Fase B.** Es la opción nativa. No se
   construye ninguna capa de abstracción de store para "poder cambiar después": eso sería una
   interfaz con una sola implementación. En su lugar, Fase B incluye un benchmark de escritura
-  (10k mensajes y 10k `UsageRecord` en append continuo) *antes* de que exista código encima.
+  (10k mensajes y 10k `UsageRecord` en append continuo) _antes_ de que exista código encima.
   Si el p95 de append o la memoria no aguantan, se cambia a SQLite ahí mismo, cuando el
   refactor cuesta poco.
 
@@ -308,7 +310,7 @@ anota por qué se eligió, para que revertirla sea una decisión y no un descubr
 
 Ninguna. Las tres que quedaban abiertas se cerraron con decisión del usuario:
 
-- **Nombre del producto: Zero.** Bundle id `tech.incu.zero`. Prefijo de rama de worktree
+- **Nombre del producto: Zero.** Bundle id `the.stool.zero`. Prefijo de rama de worktree
   `zero/{slug}-{id-corto}`.
 - **Repo privado, de uso propio.** Sin licencia pública ni distribución a terceros en v1.
 - **Piso de versión: macOS 26.0.** Confirmado. Cero `@available` en todo el código, Apple

@@ -1,33 +1,28 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-21T00:00:00Z",
-  "flow": "feature",
+  "updatedAt": "2026-08-23T19:45:00Z",
+  "flow": "bug",
   "way": "incu/dev",
   "wayVersion": "",
   "discipline": "development",
-  "slug": "002-ci-cd-releases",
-  "branch": "feat/002-ci-cd-releases",
+  "slug": "001-dmg-resource-bundle-crash",
+  "branch": "fix/001-dmg-resource-bundle-crash",
   "worktree": "",
   "isolationType": "branch",
-  "title": "CI/CD: releases, tags y DMG instalable",
+  "title": "DMG build crashes on launch — Bundle.module can't find Zero_ZeroCore.bundle",
   "ticket": null,
-  "lastPhase": "plan",
-  "phase": "implementation",
+  "lastPhase": "validation",
+  "phase": "pr",
   "documents": [
-    { "name": "PRD.md", "path": "docs/prds/002-ci-cd-releases/PRD.md", "status": "approved" },
-    { "name": "PLAN.md", "path": "docs/prds/002-ci-cd-releases/PLAN.md", "status": "approved" },
-    { "name": "TESTING.md", "path": "docs/prds/002-ci-cd-releases/TESTING.md", "status": "pending" }
+    { "name": "BUG.md", "path": "docs/bugs/001-dmg-resource-bundle-crash/BUG.md", "status": "approved" },
+    { "name": "ANALYSIS.md", "path": "docs/bugs/001-dmg-resource-bundle-crash/ANALYSIS.md", "status": "approved" },
+    { "name": "FIX_PLAN.md", "path": "docs/bugs/001-dmg-resource-bundle-crash/FIX_PLAN.md", "status": "approved" }
   ],
   "gates": [
-    { "id": "prd", "label": "PRD review", "status": "passed", "at": "2026-08-21T00:00:00Z" },
-    { "id": "plan", "label": "Plan review", "status": "passed", "at": "2026-08-21T00:00:00Z" },
-    { "id": "testing", "label": "User testing", "status": "pending", "at": null },
-    { "id": "pr-develop", "label": "PR feat→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/5" },
-    { "id": "pr-main", "label": "PR develop→main", "status": "pending", "at": null }
+    { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-23T19:50:00Z" },
+    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/7" }
   ],
   "steps": [
-    { "id": "A1", "label": "make-app.sh: version desde ZERO_VERSION", "status": "todo" },
-    { "id": "B1", "label": ".github/workflows/release.yml", "status": "todo" },
-    { "id": "C1", "label": "TESTING.md: runner + prueba manual", "status": "todo" }
+    { "id": "A1", "label": "make-app.sh: copy non-test SwiftPM resource bundles into Contents/Resources", "status": "done" }
   ]
 }
