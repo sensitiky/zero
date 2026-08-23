@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-23T21:00:00Z",
+  "updatedAt": "2026-08-23T21:10:00Z",
   "flow": "bug",
   "way": "incu/dev",
   "wayVersion": "",
@@ -9,24 +9,67 @@
   "branch": "fix/002-bundle-module-lookup-path",
   "worktree": "",
   "isolationType": "branch",
-  "title": "Released app crashes on compose — Bundle.module looks at the .app root, not Contents/Resources",
+  "title": "Released app crashes on compose \u2014 Bundle.module looks at the .app root, not Contents/Resources",
   "ticket": null,
-  "lastPhase": "implementation",
-  "phase": "validation",
+  "lastPhase": "validation",
+  "phase": "pr",
   "documents": [
-    { "name": "BUG.md", "path": "docs/bugs/002-bundle-module-lookup-path/BUG.md", "status": "approved" },
-    { "name": "ANALYSIS.md", "path": "docs/bugs/002-bundle-module-lookup-path/ANALYSIS.md", "status": "approved" },
-    { "name": "FIX_PLAN.md", "path": "docs/bugs/002-bundle-module-lookup-path/FIX_PLAN.md", "status": "approved" }
+    {
+      "name": "BUG.md",
+      "path": "docs/bugs/002-bundle-module-lookup-path/BUG.md",
+      "status": "approved"
+    },
+    {
+      "name": "ANALYSIS.md",
+      "path": "docs/bugs/002-bundle-module-lookup-path/ANALYSIS.md",
+      "status": "approved"
+    },
+    {
+      "name": "FIX_PLAN.md",
+      "path": "docs/bugs/002-bundle-module-lookup-path/FIX_PLAN.md",
+      "status": "approved"
+    }
   ],
   "gates": [
-    { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-23T20:45:00Z" },
-    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null }
+    {
+      "id": "fix-plan",
+      "label": "Fix plan review",
+      "status": "passed",
+      "at": "2026-08-23T20:45:00Z"
+    },
+    {
+      "id": "pr",
+      "label": "PR fix\u2192develop",
+      "status": "pending",
+      "at": null,
+      "url": "https://github.com/sensitiky/zero/pull/11"
+    }
   ],
   "steps": [
-    { "id": "A1", "label": "Reproduction test asserts runtime-reachable resource + strict signing", "status": "done" },
-    { "id": "A2", "label": "PricingTable: resolve via Bundle.main, Bundle.module unreachable in a packaged app", "status": "done" },
-    { "id": "A3", "label": "make-app.sh: ship resources flat in Contents/Resources", "status": "done" },
-    { "id": "A4", "label": "make-app.sh: stop swallowing app codesign failures", "status": "done" },
-    { "id": "A5", "label": "make-preview.sh: ship resources (never did)", "status": "done" }
+    {
+      "id": "A1",
+      "label": "Reproduction test asserts runtime-reachable resource + strict signing",
+      "status": "done"
+    },
+    {
+      "id": "A2",
+      "label": "PricingTable: resolve via Bundle.main, Bundle.module unreachable in a packaged app",
+      "status": "done"
+    },
+    {
+      "id": "A3",
+      "label": "make-app.sh: ship resources flat in Contents/Resources",
+      "status": "done"
+    },
+    {
+      "id": "A4",
+      "label": "make-app.sh: stop swallowing app codesign failures",
+      "status": "done"
+    },
+    {
+      "id": "A5",
+      "label": "make-preview.sh: ship resources (never did)",
+      "status": "done"
+    }
   ]
 }
