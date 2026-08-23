@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-23T21:05:00Z",
+  "updatedAt": "2026-08-23T21:20:00Z",
   "flow": "bug",
   "way": "incu/bugs",
   "wayVersion": "",
@@ -11,8 +11,8 @@
   "isolationType": "worktree",
   "title": "Git optional for in-place sessions; branch resolvable without a commit",
   "ticket": null,
-  "lastPhase": "implementation",
-  "phase": "validation",
+  "lastPhase": "validation",
+  "phase": "pr",
   "documents": [
     { "name": "BUG.md", "path": "docs/bugs/003-git-optional-unborn-head/BUG.md", "status": "approved" },
     { "name": "ANALYSIS.md", "path": "docs/bugs/003-git-optional-unborn-head/ANALYSIS.md", "status": "approved" },
@@ -20,7 +20,7 @@
   ],
   "gates": [
     { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-23T20:40:00Z" },
-    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null }
+    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/12" }
   ],
   "steps": [
     { "id": "A1", "label": "resolveBaseBranch uses git branch --show-current", "status": "done" },
