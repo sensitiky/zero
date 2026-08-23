@@ -17,6 +17,7 @@ struct ConversationPane: View {
         } else if let session = model.selectedSession {
             VStack(spacing: 0) {
                 TranscriptView(entries: session.events)
+                modeRow(session: session)
                 if let request = session.pendingPermission {
                     // No divider: the card carries its own border and margin, matching the
                     // composer's own floating surfaces rather than a bar wedged between two panes.
@@ -34,6 +35,27 @@ struct ConversationPane: View {
                 detail: "Add a repository from the sidebar. Each session gets its own git worktree inside it."
             )
         }
+    }
+
+    /// The permission mode row, directly above the composer inside the same surface — visible
+    /// for as long as a session is open, not tucked into the collapsible inspector (see the PRD's
+    /// UI/UX notes: this is a decision made as often as the provider is).
+    private func modeRow(session: AppModel.SessionSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                PermissionModeControl(mode: session.permissionMode) { mode in
+                    Task { await coordinator.setPermissionMode(mode, for: session.id) }
+                }
+                Spacer(minLength: 0)
+            }
+            if session.permissionMode == .bypass {
+                BypassWarning()
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .frame(maxWidth: 820)
+        .frame(maxWidth: .infinity)
     }
 
     /// The composer.

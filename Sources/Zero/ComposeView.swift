@@ -14,6 +14,10 @@ struct ComposeView: View {
     @State private var starting = false
     /// Local on purpose — see the note in `AppModel`.
     @State private var draft = ""
+    /// Local, and reset after every start (see `start()`) rather than living on `AppModel` beside
+    /// `draftProvider`/`draftModel`: those two are deliberately remembered between sessions, but
+    /// the PRD for permission modes is explicit that a new session always starts at `.ask`.
+    @State private var draftPermissionMode: PermissionMode = .ask
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,6 +61,14 @@ struct ComposeView: View {
                     ProviderModelPicker(model: model, coordinator: coordinator)
                     WorkspacePicker(model: model)
                     Spacer(minLength: 0)
+                }
+
+                HStack {
+                    PermissionModeControl(mode: draftPermissionMode) { draftPermissionMode = $0 }
+                    Spacer(minLength: 0)
+                }
+                if draftPermissionMode == .bypass {
+                    BypassWarning()
                 }
 
                 if let reason = coordinator.unavailableReason(for: model.draftProvider) {
@@ -104,7 +116,9 @@ struct ComposeView: View {
     private func start() {
         guard canStart, let descriptor = coordinator.descriptor(for: model.draftProvider) else { return }
         let prompt = draft
+        let mode = draftPermissionMode
         draft = ""
+        draftPermissionMode = .ask
         starting = true
         Task {
             await coordinator.startSession(
@@ -112,7 +126,8 @@ struct ComposeView: View {
                 provider: descriptor,
                 model: model.draftModel,
                 prompt: prompt,
-                workspace: model.draftWorkspace
+                workspace: model.draftWorkspace,
+                permissionMode: mode
             )
             starting = false
         }

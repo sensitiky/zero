@@ -93,7 +93,8 @@ final class SessionCoordinator {
         provider: ProviderDescriptor,
         model modelName: String,
         prompt: String,
-        workspace: SessionRuntime.Workspace = .currentCheckout
+        workspace: SessionRuntime.Workspace = .currentCheckout,
+        permissionMode: PermissionMode = .ask
     ) async {
         if workspace == .currentCheckout, let holder = occupiedCheckouts[repository],
            model.sessions.first(where: { $0.id == holder })?.state.isLive == true {
@@ -109,14 +110,17 @@ final class SessionCoordinator {
                     provider: provider,
                     model: modelName,
                     prompt: prompt,
-                    workspace: workspace
+                    workspace: workspace,
+                    permissionMode: permissionMode
                 ),
                 store: store,
                 providerRegistry: registry,
                 // Without this the CLI launches with no PreToolUse hook installed, and a tool call
                 // gets no one to ask: it either falls back to asking in plain chat text, or is denied
                 // outright depending on the CLI's own default. Either way the native prompt this app
-                // exists to show never appears. That was a real bug, not a config gap.
+                // exists to show never appears. That was a real bug, not a config gap. `.bypass`
+                // omits it on purpose (see `SessionRuntime.permissionArguments`) rather than by this
+                // check ever returning nil for Claude Code.
                 permissionSetup: provider.id == ProviderDescriptor.claude.id
                     ? .init(broker: broker, helperPath: Self.helperPath())
                     : nil
@@ -138,7 +142,8 @@ final class SessionCoordinator {
                     branch: branch,
                     workspace: workspace,
                     state: .running,
-                    initialPrompt: prompt
+                    initialPrompt: prompt,
+                    permissionMode: permissionMode
                 )
             )
             // The opening request belongs in the transcript too: it is the first thing said, and a
@@ -162,9 +167,41 @@ final class SessionCoordinator {
         pumps[id] = Task { [weak self] in
             for await event in runtime.transcript {
                 guard let self else { return }
+                if case .permissionRequested(let request) = event,
+                   let mode = self.model.sessions.first(where: { $0.id == id })?.permissionMode,
+                   mode != .ask {
+                    // Codex/ACP only: Claude Code's requests never reach this stream (see
+                    // `ClaudeCodeEncoder.encodePermissionResponse`) — they go through
+                    // `PermissionBroker` and its own matcher-based Ask/Auto split instead. Here,
+                    // `.auto` and `.bypass` are identical: neither protocol exposes a native
+                    // "provider decides for itself" the way Claude Code's `--permission-mode auto`
+                    // does (see the PRD's Open Questions), so Zero resolves locally rather than
+                    // showing the control — never as a decision the model made (FR-25).
+                    await self.autoResolvePermission(request, mode: mode, runtime: runtime)
+                    continue
+                }
                 self.model.apply(event, to: id)
             }
         }
+    }
+
+    /// Picks the allow option from the request itself — never a hardcoded id, since Codex and ACP
+    /// each use their own provider-native option ids (`"accept"`, a wire-supplied `optionId`, …).
+    /// Falls back to denying if no allow option is offered at all: failing closed here matches
+    /// `PermissionBroker`'s own rule for the same situation.
+    private func autoResolvePermission(
+        _ request: PermissionRequest,
+        mode: PermissionMode,
+        runtime: SessionRuntime
+    ) async {
+        let chosen = request.options.first(where: { $0.kind == .allowOnce })
+            ?? request.options.first(where: { $0.kind == .denyOnce })
+        guard let chosen else { return }
+        try? await runtime.resolvePermission(
+            requestID: request.id,
+            optionID: chosen.id,
+            origin: .rule("permission-mode:\(mode.rawValue)")
+        )
     }
 
     // MARK: - Turns
@@ -191,11 +228,81 @@ final class SessionCoordinator {
     ///
     /// The decision travels with `PermissionOrigin.userAction`, which is the only origin this path
     /// can produce: nothing decoded from the agent or from a tool result can reach here.
+    ///
+    /// Two paths, chosen by which one is waiting: a Claude Code request is parked in
+    /// `pendingResolvers` by `awaitUserDecision` and answered through the hook broker; a Codex/ACP
+    /// request has no such entry because it never went through the broker, so the answer is
+    /// encoded and sent back in-band instead, via `SessionRuntime.resolvePermission`.
     func answerPermission(sessionID: UUID, option: PermissionOption) {
-        guard let resolve = pendingResolvers.removeValue(forKey: sessionID) else { return }
         let allowed = option.kind == .allowOnce || option.kind == .allowAlways
-        resolve(PermissionBroker.Resolution(decision: allowed ? .allow : .deny, origin: .userAction))
+        if let resolve = pendingResolvers.removeValue(forKey: sessionID) {
+            resolve(PermissionBroker.Resolution(decision: allowed ? .allow : .deny, origin: .userAction))
+        } else if let runtime = runtimes[sessionID],
+                  let request = model.sessions.first(where: { $0.id == sessionID })?.pendingPermission {
+            Task {
+                try? await runtime.resolvePermission(
+                    requestID: request.id,
+                    optionID: option.id,
+                    origin: .userAction
+                )
+            }
+        }
         model.resolvePermission(sessionID: sessionID)
+    }
+
+    // MARK: - Permission mode
+
+    /// Changes a session's permission mode.
+    ///
+    /// No hot-swap: `--settings` and `--permission-mode` are launch-time arguments for Claude Code,
+    /// and Codex/ACP have no live-reconfiguration channel either, so a live session relaunches
+    /// through the same `SessionRuntime.resume` that already handles reopening a session after the
+    /// app restarts — degrading to read-only exactly where FR-7 of `001-agent-chat-core` already
+    /// says it must (no `providerSessionId`, or a provider without a verified resume flag).
+    func setPermissionMode(_ mode: PermissionMode, for sessionID: UUID) async {
+        guard let store = try? currentStore(),
+              let session = try? store.fetchSession(id: sessionID) else { return }
+        do {
+            try store.updatePermissionMode(session, mode: mode)
+        } catch {
+            lastError = "Could not save permission mode: \(String(describing: error))"
+            return
+        }
+        model.setPermissionMode(mode, for: sessionID)
+
+        // Nothing running to relaunch — a session that has not started yet, or already ended, just
+        // gets the new mode for whenever it (re)starts.
+        guard let runtime = runtimes[sessionID],
+              model.sessions.first(where: { $0.id == sessionID })?.state.isLive == true else { return }
+
+        pumps[sessionID]?.cancel()
+        do {
+            let broker = try await currentBroker()
+            await broker.stopSession(id: sessionID.uuidString)
+            await runtime.terminate()
+            runtimes.removeValue(forKey: sessionID)
+
+            let newRuntime = try await SessionRuntime.resume(
+                sessionID: sessionID,
+                store: store,
+                providerRegistry: registry,
+                permissionMode: mode,
+                permissionSetup: session.provider == ProviderDescriptor.claude.id
+                    ? .init(broker: broker, helperPath: Self.helperPath())
+                    : nil
+            )
+            runtimes[sessionID] = newRuntime
+            if await newRuntime.state == .finished {
+                model.appendNotice(
+                    "Switched to \(mode.label), but this provider has no verified resume — the "
+                        + "session ended here; its history stays readable.",
+                    to: sessionID
+                )
+            }
+            pump(newRuntime, id: sessionID)
+        } catch {
+            lastError = "Could not relaunch with the new permission mode: \(String(describing: error))"
+        }
     }
 
     // MARK: - Lazily built dependencies

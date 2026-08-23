@@ -79,7 +79,8 @@ public final class Store {
         model: String,
         worktreePath: String,
         branch: String,
-        providerSessionId: String? = nil
+        providerSessionId: String? = nil,
+        permissionMode: String = "ask"
     ) throws -> Session {
         let session = Session(
             id: id,
@@ -88,11 +89,20 @@ public final class Store {
             model: model,
             worktreePath: worktreePath,
             branch: branch,
-            providerSessionId: providerSessionId
+            providerSessionId: providerSessionId,
+            permissionMode: permissionMode
         )
         context.insert(session)
         try context.save()
         return session
+    }
+
+    /// Changes a session's permission mode. The caller is responsible for relaunching a live
+    /// runtime with the new mode — this only persists the choice (see `SessionCoordinator.
+    /// setPermissionMode`).
+    public func updatePermissionMode(_ session: Session, mode: PermissionMode) throws {
+        session.permissionMode = mode.rawValue
+        try context.save()
     }
 
     public func updateSessionState(_ session: Session, state: String) throws {

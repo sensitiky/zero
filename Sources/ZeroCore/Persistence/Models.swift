@@ -37,6 +37,10 @@ public final class Session {
     public var branch: String
     public var state: String // idle, running, waitingPermission, error, finished
     public var providerSessionId: String? // for resuming
+    /// `PermissionMode.rawValue` — "ask" (default), "auto", or "bypass". A row from before this
+    /// field existed reads as the type's own default, not as an empty string that has to be
+    /// special-cased at every call site: see `PermissionMode.init(persisted:)`.
+    public var permissionMode: String = "ask"
     public var createdAt: Date
     public var startedAt: Date?
     public var endedAt: Date?
@@ -83,7 +87,8 @@ public final class Session {
         worktreePath: String,
         branch: String,
         state: String = "idle",
-        providerSessionId: String? = nil
+        providerSessionId: String? = nil,
+        permissionMode: String = "ask"
     ) {
         self.id = id
         self.repository = repository
@@ -93,6 +98,7 @@ public final class Session {
         self.branch = branch
         self.state = state
         self.providerSessionId = providerSessionId
+        self.permissionMode = permissionMode
         self.createdAt = Date()
     }
 }

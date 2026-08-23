@@ -15,6 +15,8 @@ public actor SessionRuntime {
         public var resumeSessionId: String?  // if resuming, the provider's session id
         /// Where the session works. Defaults to the checkout you are already in.
         public var workspace: Workspace = .currentCheckout
+        /// How this session decides tool-call permissions. Defaults to the most restrictive.
+        public var permissionMode: PermissionMode = .ask
 
         public init(
             repository: URL,
@@ -22,7 +24,8 @@ public actor SessionRuntime {
             model: String,
             prompt: String,
             resumeSessionId: String? = nil,
-            workspace: Workspace = .currentCheckout
+            workspace: Workspace = .currentCheckout,
+            permissionMode: PermissionMode = .ask
         ) {
             self.repository = repository
             self.provider = provider
@@ -30,6 +33,7 @@ public actor SessionRuntime {
             self.prompt = prompt
             self.resumeSessionId = resumeSessionId
             self.workspace = workspace
+            self.permissionMode = permissionMode
         }
     }
 
@@ -161,6 +165,45 @@ public actor SessionRuntime {
         }
     }
 
+    /// Builds the launch arguments a session's permission mode requires for Claude Code, opening
+    /// the hook's socket first when the mode needs one.
+    ///
+    /// Every other provider returns no arguments here: Codex and ACP resolve permissions in band,
+    /// through their own protocol, not through this hook (see `PermissionMode`,
+    /// `SessionCoordinator.pump`). `.bypass` deliberately opens no socket and installs no
+    /// `--settings` at all — that omission is the mode, not a shortcut taken to reach it.
+    private static func permissionArguments(
+        sessionID: UUID,
+        provider: ProviderDescriptor,
+        mode: PermissionMode,
+        permissionSetup: PermissionSetup?
+    ) async throws -> [String] {
+        guard provider.id == ProviderDescriptor.claude.id else { return [] }
+        switch mode {
+        case .bypass:
+            return ["--permission-mode", "bypassPermissions"]
+        case .ask, .auto:
+            guard let permissionSetup else {
+                return mode == .auto ? ["--permission-mode", "auto"] : []
+            }
+            do {
+                let socketPath = try await permissionSetup.broker.startSession(id: sessionID.uuidString)
+                var args = [
+                    "--settings",
+                    HookSettings.json(
+                        helperPath: permissionSetup.helperPath,
+                        socketPath: socketPath,
+                        matcher: mode == .auto ? HookSettings.autoMatcher : HookSettings.askMatcher
+                    ),
+                ]
+                if mode == .auto { args += ["--permission-mode", "auto"] }
+                return args
+            } catch {
+                throw CreationError.providerError("could not install the permission hook: \(error)")
+            }
+        }
+    }
+
     // MARK: - Creation
 
     /// Creates a new session, checks the repository, creates a worktree, and starts the process.
@@ -211,24 +254,17 @@ public actor SessionRuntime {
         // that will connect to it ever starts.
         let sessionID = UUID()
 
-        var extraArguments: [String] = []
-        if let permissionSetup {
-            // Not swallowed: FR-23/FR-32 make the native permission prompt a product guarantee for
-            // this provider, not a nice-to-have. A session that silently launched without it would
-            // reproduce, in a new disguise, the exact bug this whole mechanism exists to prevent —
-            // the CLI asking in plain chat text with no one able to explain why.
-            do {
-                let socketPath = try await permissionSetup.broker.startSession(id: sessionID.uuidString)
-                extraArguments = [
-                    "--settings",
-                    HookSettings.json(helperPath: permissionSetup.helperPath, socketPath: socketPath),
-                ]
-            } catch {
-                throw CreationError.providerError(
-                    "could not install the permission hook: \(error)"
-                )
-            }
-        }
+        // Not swallowed for `.ask`/`.auto`: FR-23/FR-32 make the native permission prompt a
+        // product guarantee for this provider, not a nice-to-have. A session that silently
+        // launched without it would reproduce, in a new disguise, the exact bug this whole
+        // mechanism exists to prevent — the CLI asking in plain chat text with no one able to
+        // explain why. `.bypass` is the one mode where installing no hook is the point, not a bug.
+        let extraArguments = try await Self.permissionArguments(
+            sessionID: sessionID,
+            provider: config.provider,
+            mode: config.permissionMode,
+            permissionSetup: permissionSetup
+        )
 
         // Build process configuration first (before MainActor work)
         let processConfig: AgentProcess.Configuration
@@ -279,7 +315,8 @@ public actor SessionRuntime {
                 model: config.model,
                 worktreePath: worktreePath.path,
                 branch: branchName,
-                providerSessionId: config.resumeSessionId
+                providerSessionId: config.resumeSessionId,
+                permissionMode: config.permissionMode.rawValue
             )
             try store.markSessionStarted(session)
         }
@@ -312,16 +349,26 @@ public actor SessionRuntime {
     /// conversation. When it did not, the session comes back read-only: the transcript is intact and
     /// readable, but the agent is not resumed, because handing a provider an id it never issued is
     /// how you get a confidently wrong session rather than an honest empty one.
+    /// - Parameters:
+    ///   - permissionMode: The mode to launch under. Defaults to the persisted session's own mode
+    ///     (an ordinary reconnect, e.g. app relaunch); pass an explicit value when this resume
+    ///     *is* the relaunch that changes the mode (see `SessionCoordinator.setPermissionMode`).
+    ///   - permissionSetup: Required to install Claude Code's hook for `.ask`/`.auto`, same as
+    ///     `create`. Omitted, those two modes launch with no hook — which is the pre-existing bug
+    ///     this parameter exists to close, not a second way to opt out (that is what `.bypass` is).
     public static func resume(
         sessionID: UUID,
         store: Store,
-        providerRegistry: ProviderRegistry
+        providerRegistry: ProviderRegistry,
+        permissionMode: PermissionMode? = nil,
+        permissionSetup: PermissionSetup? = nil
     ) async throws -> SessionRuntime {
         struct Restored: Sendable {
             let worktree: URL
             let repositoryRoot: URL
             let providerSessionID: String?
             let provider: String
+            let permissionMode: PermissionMode
         }
 
         let restored: Restored = try await MainActor.run {
@@ -333,7 +380,8 @@ public actor SessionRuntime {
                 worktree: worktree,
                 repositoryRoot: worktree.deletingLastPathComponent().deletingLastPathComponent(),
                 providerSessionID: session.providerSessionId,
-                provider: session.provider
+                provider: session.provider,
+                permissionMode: permissionMode ?? PermissionMode(persisted: session.permissionMode)
             )
         }
 
@@ -361,12 +409,19 @@ public actor SessionRuntime {
             )
         }
 
+        let permissionArgs = try await Self.permissionArguments(
+            sessionID: sessionID,
+            provider: descriptor,
+            mode: restored.permissionMode,
+            permissionSetup: permissionSetup
+        )
+
         let configuration: AgentProcess.Configuration
         do {
             configuration = try providerRegistry.configuration(
                 for: descriptor,
                 workingDirectory: restored.worktree,
-                extraArguments: ["--resume", providerSessionID]
+                extraArguments: permissionArgs + ["--resume", providerSessionID]
             )
         } catch {
             throw CreationError.providerError(String(describing: error))
@@ -459,6 +514,34 @@ public actor SessionRuntime {
             try await process.send(record)
         }
         currentState = .running
+    }
+
+    /// Answers an in-band permission request (Codex, ACP) by sending the provider's own encoded
+    /// response back over stdin.
+    ///
+    /// Claude Code has no in-band channel — `ClaudeCodeEncoder.encodePermissionResponse` always
+    /// throws — so its requests never reach this method; they resolve through `PermissionBroker`
+    /// and its `PreToolUse` hook instead. Only `SessionCoordinator` decides which path a given
+    /// session's requests take, by which provider it is.
+    public func resolvePermission(
+        requestID: String,
+        optionID: String,
+        origin: PermissionOrigin
+    ) async throws {
+        for record in try encoder.encodePermissionResponse(
+            requestID: requestID,
+            optionID: optionID,
+            origin: origin
+        ) {
+            try await process.send(record)
+        }
+    }
+
+    /// Ends the underlying process outright, for a caller that is about to relaunch this session
+    /// under different configuration (see `SessionCoordinator.setPermissionMode`). Not a graceful
+    /// turn cancellation — `cancelTurn()` is that; this is a teardown.
+    public func terminate() async {
+        await process.terminate()
     }
 
     /// Cancels the turn in progress, leaving the session alive.
