@@ -61,7 +61,7 @@ public struct PricingTable: Sendable {
     /// markdown parsing this was mistaken for. `static let` is lazy and thread-safe by construction,
     /// so this loads once regardless of how many views call `bundled()`.
     private static let cached: PricingTable = {
-        guard let url = Bundle.module.url(forResource: "pricing", withExtension: "json"),
+        guard let url = pricingURL(),
               let data = try? Data(contentsOf: url),
               let document = try? JSONDecoder().decode(Document.self, from: data)
         else {
@@ -69,6 +69,36 @@ public struct PricingTable: Sendable {
         }
         return PricingTable(version: document.version, entries: document.models)
     }()
+
+    /// Where `pricing.json` actually is.
+    ///
+    /// `Bundle.module` is deliberately not the first thing tried, and is unreachable from a
+    /// packaged app. SwiftPM's generated accessor `fatalError`s rather than returning nil, and the
+    /// only two locations it checks are the `.app` *root* (it builds that path from
+    /// `Bundle.main.bundleURL`, not `resourceURL`) and the absolute build directory baked in at
+    /// compile time. In a released build the first has never existed and the second is the CI
+    /// runner's path, so it crashed the app on first render — twice, because a locally built app
+    /// resolves through that baked path and looks perfectly fine. See
+    /// `docs/bugs/002-bundle-module-lookup-path`.
+    ///
+    /// Satisfying the accessor by shipping the bundle at the `.app` root is not an option either:
+    /// any unsealed item in the bundle root makes the app unsignable. So the resource ships flat in
+    /// `Contents/Resources` (`Scripts/make-app.sh`) and is read from there.
+    private static func pricingURL() -> URL? {
+        // Packaged app: Contents/Resources, the standard macOS location.
+        if let url = Bundle.main.url(forResource: "pricing", withExtension: "json") { return url }
+        // A packaged app stops here. Its resource can only be in Contents/Resources, and if a
+        // packaging regression drops it, unknown costs (FR-30) are the documented behavior —
+        // whereas consulting `Bundle.module` would mean a `fatalError` on a build directory that
+        // cannot exist on a user's machine. That reachability is the whole bug.
+        guard Bundle.main.bundleURL.pathExtension != "app" else { return nil }
+        // `swift run` / `swift test`: the resource bundle is found through the build path SwiftPM
+        // baked in, which is the only mechanism that works here — under `swift test` `Bundle.main`
+        // is the toolchain's `swiftpm-testing-helper`, so nothing relative to it reaches the build
+        // products. Safe in this branch by construction: it only runs on the machine that built
+        // the binary, where that path exists.
+        return Bundle.module.url(forResource: "pricing", withExtension: "json")
+    }
 
     public static func bundled() -> PricingTable { cached }
 
