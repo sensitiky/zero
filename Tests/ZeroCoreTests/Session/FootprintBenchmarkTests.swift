@@ -72,7 +72,6 @@ struct FootprintBenchmarkTests {
                     )
                 ),
                 store: store,
-                gitService: try GitService(repositoryPath: repo),
                 decoder: ClaudeCodeDecoder(),
                 encoder: ClaudeCodeEncoder(),
                 providerRegistry: ProviderRegistry()

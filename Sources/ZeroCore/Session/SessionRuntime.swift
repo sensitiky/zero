@@ -101,7 +101,6 @@ public actor SessionRuntime {
     public nonisolated var id: UUID { sessionID }
     private let process: AgentProcess
     private let store: Store
-    private let gitService: GitService
     /// Existential, not `ClaudeCodeDecoder`.
     ///
     /// A runtime named after one provider's decoder can only ever drive that provider, which is
@@ -129,7 +128,6 @@ public actor SessionRuntime {
         sessionID: UUID,
         process: AgentProcess,
         store: Store,
-        gitService: GitService,
         decoder: any ProtocolDecoder,
         encoder: any ProtocolEncoder,
         providerRegistry: ProviderRegistry
@@ -137,7 +135,6 @@ public actor SessionRuntime {
         self.sessionID = sessionID
         self.process = process
         self.store = store
-        self.gitService = gitService
         self.decoder = decoder
         self.encoder = encoder
         self.providerRegistry = providerRegistry
@@ -206,6 +203,10 @@ public actor SessionRuntime {
 
     // MARK: - Creation
 
+    /// What a session's branch reads as when there is no branch to name — no repository, no commit
+    /// yet, or a detached `HEAD`. Same em dash `SessionCoordinator` already falls back to.
+    private static let unknownBranchLabel = "—"
+
     /// Creates a new session, checks the repository, creates a worktree, and starts the process.
     ///
     /// - Parameter config: Configuration for the session.
@@ -217,15 +218,10 @@ public actor SessionRuntime {
         providerRegistry: ProviderRegistry,
         permissionSetup: PermissionSetup? = nil
     ) async throws -> SessionRuntime {
-        // Initialize git service for the repository
-        let gitService: GitService
-        do {
-            gitService = try GitService(repositoryPath: config.repository)
-        } catch let error as GitError {
-            throw CreationError.gitError(String(describing: error))
-        } catch {
-            throw CreationError.gitError(String(describing: error))
-        }
+        // Git is optional, and `nil` here is not a failure. An in-place session reads the branch
+        // only to label itself, so a folder that was never `git init`-ed is an ordinary place to
+        // start one. Only `.isolatedWorktree` genuinely needs a repository, and it says so itself.
+        let gitService = try? GitService(repositoryPath: config.repository)
 
         // No dirty check. Working on uncommitted changes is the ordinary case, not an exception to
         // warn about — the agent runs in the working tree and sees exactly what you see.
@@ -234,12 +230,22 @@ public actor SessionRuntime {
         switch config.workspace {
         case .currentCheckout:
             worktreePath = config.repository
-            do {
-                branchName = try await gitService.resolveBaseBranch()
-            } catch {
-                throw CreationError.gitError(String(describing: error))
+            // Degrades instead of aborting: this is a label, not a precondition. No repository, no
+            // commit yet, or a detached HEAD each leave it unknown and the session perfectly
+            // runnable — a session that refused to start over the name of a branch it never
+            // touches was the bug.
+            if let gitService {
+                branchName = (try? await gitService.resolveBaseBranch()) ?? Self.unknownBranchLabel
+            } else {
+                branchName = Self.unknownBranchLabel
             }
         case .isolatedWorktree:
+            // A worktree is branched, so here the repository is the requirement it always was.
+            guard let gitService else {
+                throw CreationError.gitError(
+                    String(describing: GitError.notARepository(path: config.repository.path))
+                )
+            }
             do {
                 (worktreePath, branchName) = try await gitService.createWorktree(from: config.prompt)
             } catch let error as GitError {
@@ -279,7 +285,7 @@ public actor SessionRuntime {
             // user's own checkout: deleting that would destroy the work the session was meant to
             // continue.
             if config.workspace == .isolatedWorktree {
-                try? await gitService.tearDown(
+                try? await gitService?.tearDown(
                     worktreeAt: worktreePath,
                     branch: branchName,
                     authorization: .worktreeAndBranch
@@ -297,7 +303,7 @@ public actor SessionRuntime {
             // user's own checkout: deleting that would destroy the work the session was meant to
             // continue.
             if config.workspace == .isolatedWorktree {
-                try? await gitService.tearDown(
+                try? await gitService?.tearDown(
                     worktreeAt: worktreePath,
                     branch: branchName,
                     authorization: .worktreeAndBranch
@@ -326,7 +332,6 @@ public actor SessionRuntime {
             sessionID: sessionID,
             process: process,
             store: store,
-            gitService: gitService,
             decoder: ClaudeCodeDecoder(),
             encoder: ClaudeCodeEncoder(),
             providerRegistry: providerRegistry
@@ -365,7 +370,6 @@ public actor SessionRuntime {
     ) async throws -> SessionRuntime {
         struct Restored: Sendable {
             let worktree: URL
-            let repositoryRoot: URL
             let providerSessionID: String?
             let provider: String
             let permissionMode: PermissionMode
@@ -378,19 +382,16 @@ public actor SessionRuntime {
             let worktree = URL(fileURLWithPath: session.worktreePath)
             return Restored(
                 worktree: worktree,
-                repositoryRoot: worktree.deletingLastPathComponent().deletingLastPathComponent(),
                 providerSessionID: session.providerSessionId,
                 provider: session.provider,
                 permissionMode: permissionMode ?? PermissionMode(persisted: session.permissionMode)
             )
         }
 
-        let gitService: GitService
-        do {
-            gitService = try GitService(repositoryPath: restored.repositoryRoot)
-        } catch {
-            throw CreationError.gitError(String(describing: error))
-        }
+        // No `GitService` here. Resuming reads nothing from git — the branch was persisted when
+        // the session was created — and the one built here was rooted at the worktree's
+        // *grandparent*, which for an in-place session is the directory above the repository. That
+        // made resuming a perfectly good session fail on a service it never consulted.
 
         // Only Claude Code has a resume flag verified against the real CLI. Anything else stays
         // read-only rather than being launched with a guessed argument.
@@ -404,7 +405,6 @@ public actor SessionRuntime {
                 sessionID: sessionID,
                 worktree: restored.worktree,
                 store: store,
-                gitService: gitService,
                 providerRegistry: providerRegistry
             )
         }
@@ -431,7 +431,6 @@ public actor SessionRuntime {
             sessionID: sessionID,
             process: AgentProcess(configuration: configuration),
             store: store,
-            gitService: gitService,
             decoder: ClaudeCodeDecoder(),
             encoder: ClaudeCodeEncoder(),
             providerRegistry: providerRegistry
@@ -447,7 +446,6 @@ public actor SessionRuntime {
         sessionID: UUID,
         worktree: URL,
         store: Store,
-        gitService: GitService,
         providerRegistry: ProviderRegistry
     ) async throws -> SessionRuntime {
         let idle = AgentProcess(
@@ -462,7 +460,6 @@ public actor SessionRuntime {
             sessionID: sessionID,
             process: idle,
             store: store,
-            gitService: gitService,
             decoder: ClaudeCodeDecoder(),
             encoder: ClaudeCodeEncoder(),
             providerRegistry: providerRegistry

@@ -77,8 +77,9 @@ final class SessionCoordinator {
 
     // MARK: - Starting a session
 
-    /// Asks for a repository. A folder picker rather than a text field: the path has to be a real
-    /// git repository, and letting someone type one is letting them typo one.
+    /// Asks for a folder to work in. A picker rather than a text field: letting someone type a
+    /// path is letting them typo one. It need not be a git repository — an in-place session only
+    /// reads git to label itself (see `SessionRuntime.create`); a new worktree is what needs one.
     func chooseRepository() -> URL? {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true

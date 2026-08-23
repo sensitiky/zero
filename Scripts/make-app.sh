@@ -25,16 +25,24 @@ cp "$BIN/Zero" "$APP/Contents/MacOS/Zero"
 cp "$BIN/zero-permission-hook" "$APP/Contents/MacOS/zero-permission-hook"
 
 # Targets that declare `resources:` in Package.swift (e.g. ZeroCore's pricing.json) get compiled
-# into a sibling *.bundle next to the binary, not embedded in it. Bundle.module finds that sibling
-# fine under `swift run`/`swift test`, but once the binary is copied out into Zero.app it has to
-# be copied too, or Bundle.module fatalErrors at runtime (see docs/bugs/001-dmg-resource-bundle-crash).
+# into a sibling *.bundle next to the binary, not embedded in it. Those resources have to travel
+# into the app, and they go in Contents/Resources **flattened** — the standard macOS location, which
+# is what Bundle.main reads.
+#
+# Not as a nested *.bundle directory, which is what an earlier fix did
+# (docs/bugs/001-dmg-resource-bundle-crash) and which never worked: SwiftPM's generated
+# Bundle.module builds its path from Bundle.main.bundleURL, so it looks for the bundle at the .app
+# ROOT, not under Contents/Resources — and copying it to the root instead is not an option, because
+# any unsealed item in the bundle root makes the app unsignable ("unsealed contents present in the
+# bundle root"). See docs/bugs/002-bundle-module-lookup-path.
 # Test-target bundles aren't a runtime dependency of the shipped app.
 for bundle in "$BIN"/*.bundle; do
     [ -e "$bundle" ] || continue
     case "$(basename "$bundle")" in
         *Tests.bundle) continue ;;
     esac
-    cp -R "$bundle" "$APP/Contents/Resources/"
+    # The contents, not the directory: PricingTable reads pricing.json via Bundle.main.
+    cp -R "$bundle"/* "$APP/Contents/Resources/"
 done
 
 cat > "$APP/Contents/Info.plist" <<PLIST
@@ -77,6 +85,8 @@ fi
 # Ad-hoc signature: enough to launch locally. Real distribution needs a Developer ID plus
 # notarization, which is G4 and needs credentials this script must not hold.
 codesign --force --sign - --timestamp=none "$APP/Contents/MacOS/zero-permission-hook" >/dev/null 2>&1 || true
-codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1 || true
+# Not `|| true` on the app itself: signing fails outright if anything unsealable ends up in the
+# bundle root, and swallowing that ships an unsigned app with nothing saying so. Fail the build.
+codesign --force --sign - --timestamp=none "$APP"
 
 echo "built $APP"
