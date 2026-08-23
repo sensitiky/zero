@@ -1,47 +1,75 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-23T01:15:00Z",
-  "flow": "feature",
+  "updatedAt": "2026-08-23T21:10:00Z",
+  "flow": "bug",
   "way": "incu/dev",
   "wayVersion": "",
   "discipline": "development",
-  "slug": "003-permission-modes",
-  "branch": "feat/003-permission-modes",
+  "slug": "002-bundle-module-lookup-path",
+  "branch": "fix/002-bundle-module-lookup-path",
   "worktree": "",
   "isolationType": "branch",
-  "title": "Permission mode selector (Ask / Auto / Bypass) above the chat",
+  "title": "Released app crashes on compose \u2014 Bundle.module looks at the .app root, not Contents/Resources",
   "ticket": null,
   "lastPhase": "validation",
-  "phase": "pr-develop",
+  "phase": "pr",
   "documents": [
-    { "name": "PRD.md", "path": "docs/prds/003-permission-modes/PRD.md", "status": "approved" },
-    { "name": "PLAN.md", "path": "docs/prds/003-permission-modes/PLAN.md", "status": "approved" },
-    { "name": "TESTING.md", "path": "docs/prds/003-permission-modes/TESTING.md", "status": "in-review" }
+    {
+      "name": "BUG.md",
+      "path": "docs/bugs/002-bundle-module-lookup-path/BUG.md",
+      "status": "approved"
+    },
+    {
+      "name": "ANALYSIS.md",
+      "path": "docs/bugs/002-bundle-module-lookup-path/ANALYSIS.md",
+      "status": "approved"
+    },
+    {
+      "name": "FIX_PLAN.md",
+      "path": "docs/bugs/002-bundle-module-lookup-path/FIX_PLAN.md",
+      "status": "approved"
+    }
   ],
   "gates": [
-    { "id": "prd", "label": "PRD review", "status": "passed", "at": "2026-08-23T00:10:00Z" },
-    { "id": "plan", "label": "Plan review", "status": "passed", "at": "2026-08-23T00:15:00Z" },
-    { "id": "testing", "label": "User testing", "status": "pending", "at": null },
-    { "id": "pr-develop", "label": "PR feat→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/9" },
-    { "id": "pr-main", "label": "PR develop→main", "status": "pending", "at": null }
+    {
+      "id": "fix-plan",
+      "label": "Fix plan review",
+      "status": "passed",
+      "at": "2026-08-23T20:45:00Z"
+    },
+    {
+      "id": "pr",
+      "label": "PR fix\u2192develop",
+      "status": "pending",
+      "at": null,
+      "url": "https://github.com/sensitiky/zero/pull/11"
+    }
   ],
   "steps": [
-    { "id": "A1", "label": "PermissionMode enum (ask/auto/bypass)", "status": "done" },
-    { "id": "A2", "label": "HookSettings: askMatcher (+WebSearch fix) / autoMatcher", "status": "done" },
-    { "id": "A3", "label": "Session.permissionMode + Store create/update", "status": "done" },
-    { "id": "B1", "label": "SessionRuntime.resolvePermission (in-band response)", "status": "done" },
-    { "id": "B2", "label": "SessionCoordinator.answerPermission falls back to resolvePermission", "status": "done" },
-    { "id": "C1", "label": "CreationConfig.permissionMode", "status": "done" },
-    { "id": "C2", "label": "SessionRuntime.create: hook/matcher/--permission-mode by mode", "status": "done" },
-    { "id": "C3", "label": "SessionRuntime.resume: same hook wiring as create", "status": "done" },
-    { "id": "C4", "label": "Verify --permission-mode bypassPermissions against real CLI", "status": "done" },
-    { "id": "D1", "label": "Coordinator.pump auto-resolves non-ask permissionRequested", "status": "done" },
-    { "id": "D2", "label": "Test: Codex auto-approval fixture", "status": "done" },
-    { "id": "E1", "label": "SessionRuntime.terminate()", "status": "done" },
-    { "id": "E2", "label": "SessionCoordinator.setPermissionMode (relaunch/resume)", "status": "done" },
-    { "id": "F1", "label": "PermissionModeControl view", "status": "done" },
-    { "id": "F2", "label": "Wire control + bypass warning into ConversationPane", "status": "done" },
-    { "id": "F3", "label": "AppModel/SessionSnapshot + startSession plumbing", "status": "done" },
-    { "id": "F4", "label": "PreviewData.seed() sessions per mode", "status": "done" }
+    {
+      "id": "A1",
+      "label": "Reproduction test asserts runtime-reachable resource + strict signing",
+      "status": "done"
+    },
+    {
+      "id": "A2",
+      "label": "PricingTable: resolve via Bundle.main, Bundle.module unreachable in a packaged app",
+      "status": "done"
+    },
+    {
+      "id": "A3",
+      "label": "make-app.sh: ship resources flat in Contents/Resources",
+      "status": "done"
+    },
+    {
+      "id": "A4",
+      "label": "make-app.sh: stop swallowing app codesign failures",
+      "status": "done"
+    },
+    {
+      "id": "A5",
+      "label": "make-preview.sh: ship resources (never did)",
+      "status": "done"
+    }
   ]
 }
