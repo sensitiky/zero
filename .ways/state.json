@@ -11,8 +11,8 @@
   "isolationType": "branch",
   "title": "DMG build crashes on launch — Bundle.module can't find Zero_ZeroCore.bundle",
   "ticket": null,
-  "lastPhase": "implementation",
-  "phase": "validation",
+  "lastPhase": "validation",
+  "phase": "pr",
   "documents": [
     { "name": "BUG.md", "path": "docs/bugs/001-dmg-resource-bundle-crash/BUG.md", "status": "approved" },
     { "name": "ANALYSIS.md", "path": "docs/bugs/001-dmg-resource-bundle-crash/ANALYSIS.md", "status": "approved" },
@@ -20,7 +20,7 @@
   ],
   "gates": [
     { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-23T19:50:00Z" },
-    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null }
+    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/7" }
   ],
   "steps": [
     { "id": "A1", "label": "make-app.sh: copy non-test SwiftPM resource bundles into Contents/Resources", "status": "done" }
