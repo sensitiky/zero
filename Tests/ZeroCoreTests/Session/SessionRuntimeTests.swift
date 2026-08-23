@@ -335,7 +335,6 @@ struct SessionRuntimeTests {
             sessionID: session.id,
             process: process,
             store: store,
-            gitService: try GitService(repositoryPath: repo),
             decoder: ThreadTrackingDecoder(recorder: recorder),
             encoder: ClaudeCodeEncoder(),
             providerRegistry: ProviderRegistry()
@@ -444,7 +443,6 @@ struct SessionRuntimeTests {
                 )
             ),
             store: store,
-            gitService: try GitService(repositoryPath: repo),
             decoder: ClaudeCodeDecoder(),
             encoder: ClaudeCodeEncoder(),
             providerRegistry: ProviderRegistry()
@@ -486,7 +484,6 @@ struct SessionRuntimeTests {
                 executable: stub, arguments: [], environment: [:], workingDirectory: repo
             )),
             store: store,
-            gitService: try GitService(repositoryPath: repo),
             decoder: CodexDecoder(),
             encoder: CodexEncoder(),
             providerRegistry: ProviderRegistry()
@@ -521,7 +518,6 @@ struct SessionRuntimeTests {
                 arguments: [], environment: [:], workingDirectory: repo
             )),
             store: store,
-            gitService: try GitService(repositoryPath: repo),
             decoder: ClaudeCodeDecoder(),
             encoder: ClaudeCodeEncoder(),
             providerRegistry: ProviderRegistry()
@@ -625,9 +621,15 @@ struct SessionRuntimeTests {
         return path
     }
 
-    private func makeRepository(at url: URL) throws {
-        for arguments in [["init", "-q", url.path],
-                          ["-C", url.path, "commit", "-q", "--allow-empty", "-m", "base"]] {
+    /// - parameter commit: `false` leaves the repository with an unborn `HEAD` — initialized, on a
+    ///   branch, but with no commit for `HEAD` to resolve to. That is a brand-new repository, and
+    ///   it is where the git failure this suite covers was reported.
+    private func makeRepository(at url: URL, commit: Bool = true) throws {
+        var invocations = [["init", "-q", url.path]]
+        if commit {
+            invocations.append(["-C", url.path, "commit", "-q", "--allow-empty", "-m", "base"])
+        }
+        for arguments in invocations {
             let git = Process()
             git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
             git.arguments = arguments
@@ -801,6 +803,94 @@ struct SessionRuntimeTests {
         for await _ in runtime.transcript {}
         await runtime.waitUntilFinished()
         await broker.stopAll()
+    }
+
+    // MARK: - Git is optional for a session in the current checkout
+
+    /// The reported bug, at the layer it was hit: `git init` with nothing committed, then a message.
+    /// `rev-parse --abbrev-ref HEAD` exits 128 on an unborn `HEAD`, and creation died there —
+    /// before the CLI was ever launched — over a branch name it only wanted in order to label the
+    /// session.
+    @Test("create() starts a session in a repository with no commits")
+    func createInRepositoryWithoutCommits() async throws {
+        let store = try createTestStore()
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try makeRepository(at: repo, commit: false)
+
+        let stub = try makeArgvEchoingStub()
+        defer { try? FileManager.default.removeItem(at: stub) }
+        let registry = ProviderRegistry(
+            resolveExecutable: { _, _ in stub },
+            getVersion: { _, _ in "2.1.237 (Claude Code)" }
+        )
+
+        let runtime = try await SessionRuntime.create(
+            with: .init(repository: repo, provider: .claude, model: "m", prompt: "t"),
+            store: store,
+            providerRegistry: registry
+        )
+        await runtime.closeStdin()
+        for await _ in runtime.transcript {}
+        await runtime.waitUntilFinished()
+
+        // The branch is knowable even with no commit: `HEAD` is a symbolic ref to it.
+        let branch = try store.fetchSession(id: runtime.id)?.branch
+        #expect(branch == "main" || branch == "master")
+    }
+
+    /// A folder is a place to work, not a repository to interrogate. An in-place session creates no
+    /// branch and no worktree, so `git init` is not a precondition for starting one.
+    @Test("create() starts a session in a folder that is not a repository")
+    func createInFolderWithoutGit() async throws {
+        let store = try createTestStore()
+        let folder = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let stub = try makeArgvEchoingStub()
+        defer { try? FileManager.default.removeItem(at: stub) }
+        let registry = ProviderRegistry(
+            resolveExecutable: { _, _ in stub },
+            getVersion: { _, _ in "2.1.237 (Claude Code)" }
+        )
+
+        let runtime = try await SessionRuntime.create(
+            with: .init(repository: folder, provider: .claude, model: "m", prompt: "t"),
+            store: store,
+            providerRegistry: registry
+        )
+        await runtime.closeStdin()
+        for await _ in runtime.transcript {}
+        await runtime.waitUntilFinished()
+
+        let session = try store.fetchSession(id: runtime.id)
+        #expect(session?.worktreePath == folder.path)
+        #expect(session?.branch == "—")
+    }
+
+    /// The other half of the same rule: a worktree is branched, so there it is a real requirement
+    /// and it fails before anything is launched.
+    @Test("an isolated worktree still requires a repository")
+    func isolatedWorktreeStillRequiresARepository() async throws {
+        let store = try createTestStore()
+        let folder = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        do {
+            _ = try await SessionRuntime.create(
+                with: .init(
+                    repository: folder, provider: Self.missingProvider, model: "m", prompt: "t",
+                    workspace: .isolatedWorktree
+                ),
+                store: store,
+                providerRegistry: ProviderRegistry()
+            )
+            Issue.record("expected creation to fail without a repository")
+        } catch SessionRuntime.CreationError.gitError {
+            // Reported as git's problem, which it is.
+        } catch {
+            Issue.record("expected a gitError, got \(error)")
+        }
     }
 
 }

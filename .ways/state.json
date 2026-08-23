@@ -1,75 +1,37 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-23T21:10:00Z",
+  "updatedAt": "2026-08-23T21:20:00Z",
   "flow": "bug",
-  "way": "incu/dev",
+  "way": "incu/bugs",
   "wayVersion": "",
   "discipline": "development",
-  "slug": "002-bundle-module-lookup-path",
-  "branch": "fix/002-bundle-module-lookup-path",
-  "worktree": "",
-  "isolationType": "branch",
-  "title": "Released app crashes on compose \u2014 Bundle.module looks at the .app root, not Contents/Resources",
+  "slug": "003-git-optional-unborn-head",
+  "branch": "fix/003-git-optional-unborn-head",
+  "worktree": "../worktrees/fix-003-git-optional-unborn-head",
+  "isolationType": "worktree",
+  "title": "Git optional for in-place sessions; branch resolvable without a commit",
   "ticket": null,
   "lastPhase": "validation",
   "phase": "pr",
   "documents": [
-    {
-      "name": "BUG.md",
-      "path": "docs/bugs/002-bundle-module-lookup-path/BUG.md",
-      "status": "approved"
-    },
-    {
-      "name": "ANALYSIS.md",
-      "path": "docs/bugs/002-bundle-module-lookup-path/ANALYSIS.md",
-      "status": "approved"
-    },
-    {
-      "name": "FIX_PLAN.md",
-      "path": "docs/bugs/002-bundle-module-lookup-path/FIX_PLAN.md",
-      "status": "approved"
-    }
+    { "name": "BUG.md", "path": "docs/bugs/003-git-optional-unborn-head/BUG.md", "status": "approved" },
+    { "name": "ANALYSIS.md", "path": "docs/bugs/003-git-optional-unborn-head/ANALYSIS.md", "status": "approved" },
+    { "name": "FIX_PLAN.md", "path": "docs/bugs/003-git-optional-unborn-head/FIX_PLAN.md", "status": "approved" }
   ],
   "gates": [
-    {
-      "id": "fix-plan",
-      "label": "Fix plan review",
-      "status": "passed",
-      "at": "2026-08-23T20:45:00Z"
-    },
-    {
-      "id": "pr",
-      "label": "PR fix\u2192develop",
-      "status": "pending",
-      "at": null,
-      "url": "https://github.com/sensitiky/zero/pull/11"
-    }
+    { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-23T20:40:00Z" },
+    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/12" }
   ],
   "steps": [
-    {
-      "id": "A1",
-      "label": "Reproduction test asserts runtime-reachable resource + strict signing",
-      "status": "done"
-    },
-    {
-      "id": "A2",
-      "label": "PricingTable: resolve via Bundle.main, Bundle.module unreachable in a packaged app",
-      "status": "done"
-    },
-    {
-      "id": "A3",
-      "label": "make-app.sh: ship resources flat in Contents/Resources",
-      "status": "done"
-    },
-    {
-      "id": "A4",
-      "label": "make-app.sh: stop swallowing app codesign failures",
-      "status": "done"
-    },
-    {
-      "id": "A5",
-      "label": "make-preview.sh: ship resources (never did)",
-      "status": "done"
-    }
+    { "id": "A1", "label": "resolveBaseBranch uses git branch --show-current", "status": "done" },
+    { "id": "A2", "label": "Reproduction test: unborn HEAD resolves its branch", "status": "done" },
+    { "id": "A3", "label": "Detached-HEAD test locks the preserved error", "status": "done" },
+    { "id": "B1", "label": "create(): GitService optional; branch label degrades to \"—\"", "status": "done" },
+    { "id": "B2", "label": "create(): .isolatedWorktree still requires a repository", "status": "done" },
+    { "id": "B3", "label": "create() tests: no-commit repo, plain folder, worktree guard", "status": "done" },
+    { "id": "C1", "label": "Remove unused gitService from the runtime (and resume's grandparent root)", "status": "done" },
+    { "id": "C2", "label": "Update test call sites (SessionRuntimeTests, FootprintBenchmarkTests)", "status": "done" },
+    { "id": "D1", "label": "Validation: swift build, swift test (207), app bundle", "status": "done" },
+    { "id": "D2", "label": "Manual check in the running app (three folders)", "status": "todo" }
   ]
 }

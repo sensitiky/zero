@@ -71,6 +71,39 @@ struct GitServiceTests {
         return tempDir
     }
 
+    /// A repository with an unborn `HEAD`: initialized, no commit.
+    private func createTempRepoWithoutCommits() throws -> URL {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        try runGit(["init"], in: tempDir)
+        return tempDir
+    }
+
+    @discardableResult
+    private func runGit(_ args: [String], in directory: URL) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = args
+        process.currentDirectoryURL = directory
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+        try process.run()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw GitError.commandFailed(
+                command: args.joined(separator: " "),
+                exitCode: process.terminationStatus,
+                stderr: ""
+            )
+        }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
     private func cleanupRepo(_ path: URL) {
         try? FileManager.default.removeItem(at: path)
     }
@@ -344,6 +377,33 @@ struct GitServiceTests {
         let baseBranch = try await service.resolveBaseBranch()
 
         #expect(baseBranch == "master" || baseBranch == "main")
+    }
+
+    /// A brand-new repository — `git init`, nothing committed — is an ordinary place to start a
+    /// session, and its branch is knowable: `HEAD` is a symbolic ref to it. Only *resolving* `HEAD`
+    /// to a commit is impossible, which is why `rev-parse --abbrev-ref HEAD` exits 128 here.
+    @Test("resolves base branch in a repository with no commits")
+    func resolvesBaseBranchWithoutCommits() async throws {
+        let repoPath = try createTempRepoWithoutCommits()
+        defer { cleanupRepo(repoPath) }
+
+        let service = try GitService(repositoryPath: repoPath)
+        let baseBranch = try await service.resolveBaseBranch()
+
+        #expect(baseBranch == "master" || baseBranch == "main")
+    }
+
+    /// Detached `HEAD` has no branch to name, and saying so is not the same as failing to look.
+    @Test("reports no branch when HEAD is detached")
+    func resolveBaseBranchOnDetachedHead() async throws {
+        let repoPath = try createTempRepo()
+        defer { cleanupRepo(repoPath) }
+        try runGit(["checkout", "--detach"], in: repoPath)
+
+        let service = try GitService(repositoryPath: repoPath)
+        await #expect(throws: GitError.self) {
+            _ = try await service.resolveBaseBranch()
+        }
     }
 
     // MARK: - D3 — a teardown deletes only what it was authorized to delete

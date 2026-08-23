@@ -36,12 +36,18 @@ public actor GitService {
     ///
     /// Returns the currently checked-out branch in the repository.
     ///
+    /// Reads `HEAD`'s symbolic ref rather than resolving it. `rev-parse --abbrev-ref HEAD`, which
+    /// this replaced, exits 128 in a repository with no commits — `HEAD` names a branch there, it
+    /// just does not point at a commit yet — so a brand-new repository could not start a session
+    /// at all. `branch --show-current` answers on an unborn branch, and prints nothing (exit 0)
+    /// when `HEAD` is detached, which the guard below turns into an error as before.
+    ///
     /// - returns: The branch name (e.g., "main", "develop").
     /// - throws: ``GitError`` if the branch cannot be resolved.
     public func resolveBaseBranch() throws -> String {
-        let output = try runGit(["rev-parse", "--abbrev-ref", "HEAD"])
+        let output = try runGit(["branch", "--show-current"])
         let branch = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !branch.isEmpty && branch != "HEAD" else {
+        guard !branch.isEmpty else {
             throw GitError.cannotResolveBranch(reason: "Current branch is detached or unknown")
         }
         return branch
