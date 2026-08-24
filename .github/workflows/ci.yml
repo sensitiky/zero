@@ -1,0 +1,25 @@
+name: ci
+
+# Every PR and every push to the long-lived branches. release.yml also runs `swift test`, but only
+# after a merge to main — which is too late to be the thing that tells you a branch is broken.
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Cheap and independent of the build, so it runs first: a token violation is a review comment
+      # you should never have to write by hand.
+      - name: Lint design tokens
+        run: Scripts/lint-design-tokens.sh
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test

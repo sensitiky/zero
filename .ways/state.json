@@ -1,37 +1,283 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-23T21:20:00Z",
-  "flow": "bug",
-  "way": "incu/bugs",
+  "updatedAt": "2026-08-24T13:32:35Z",
+  "flow": "feature",
+  "way": "incu/dev",
   "wayVersion": "",
   "discipline": "development",
-  "slug": "003-git-optional-unborn-head",
-  "branch": "fix/003-git-optional-unborn-head",
-  "worktree": "../worktrees/fix-003-git-optional-unborn-head",
-  "isolationType": "worktree",
-  "title": "Git optional for in-place sessions; branch resolvable without a commit",
+  "slug": "004-ui-visual-overhaul",
+  "branch": "feat/004-ui-visual-overhaul",
+  "worktree": "",
+  "isolationType": "branch",
+  "title": "Rediseño visual (overhaul): material, acento único, ritmo y diff real",
   "ticket": null,
-  "lastPhase": "validation",
-  "phase": "pr",
+  "lastPhase": "implementation",
+  "phase": "pr-develop",
   "documents": [
-    { "name": "BUG.md", "path": "docs/bugs/003-git-optional-unborn-head/BUG.md", "status": "approved" },
-    { "name": "ANALYSIS.md", "path": "docs/bugs/003-git-optional-unborn-head/ANALYSIS.md", "status": "approved" },
-    { "name": "FIX_PLAN.md", "path": "docs/bugs/003-git-optional-unborn-head/FIX_PLAN.md", "status": "approved" }
+    {
+      "name": "PRD.md",
+      "path": "docs/prds/004-ui-visual-overhaul/PRD.md",
+      "status": "approved"
+    },
+    {
+      "name": "PLAN.md",
+      "path": "docs/prds/004-ui-visual-overhaul/PLAN.md",
+      "status": "approved"
+    },
+    {
+      "name": "TESTING.md",
+      "path": "docs/prds/004-ui-visual-overhaul/TESTING.md",
+      "status": "draft"
+    }
   ],
   "gates": [
-    { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-23T20:40:00Z" },
-    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/12" }
+    {
+      "id": "prd",
+      "label": "PRD review",
+      "status": "passed",
+      "at": "2026-08-23T20:57:44Z"
+    },
+    {
+      "id": "plan",
+      "label": "Plan review",
+      "status": "passed",
+      "at": "2026-08-23T20:58:58Z"
+    },
+    {
+      "id": "testing",
+      "label": "User testing",
+      "status": "pending",
+      "at": null
+    },
+    {
+      "id": "pr-develop",
+      "label": "PR feat→develop",
+      "status": "pending",
+      "at": null,
+      "url": "https://github.com/sensitiky/zero/pull/14"
+    },
+    {
+      "id": "pr-main",
+      "label": "PR develop→main",
+      "status": "pending",
+      "at": null
+    }
   ],
   "steps": [
-    { "id": "A1", "label": "resolveBaseBranch uses git branch --show-current", "status": "done" },
-    { "id": "A2", "label": "Reproduction test: unborn HEAD resolves its branch", "status": "done" },
-    { "id": "A3", "label": "Detached-HEAD test locks the preserved error", "status": "done" },
-    { "id": "B1", "label": "create(): GitService optional; branch label degrades to \"—\"", "status": "done" },
-    { "id": "B2", "label": "create(): .isolatedWorktree still requires a repository", "status": "done" },
-    { "id": "B3", "label": "create() tests: no-commit repo, plain folder, worktree guard", "status": "done" },
-    { "id": "C1", "label": "Remove unused gitService from the runtime (and resume's grandparent root)", "status": "done" },
-    { "id": "C2", "label": "Update test call sites (SessionRuntimeTests, FootprintBenchmarkTests)", "status": "done" },
-    { "id": "D1", "label": "Validation: swift build, swift test (207), app bundle", "status": "done" },
-    { "id": "D2", "label": "Manual check in the running app (three folders)", "status": "todo" }
+    {
+      "id": "A1",
+      "label": "Escala de radios como tokens con nombre en `Theme` (`composer` 22, `card` 14, `content` 8, `inline` 6)",
+      "status": "done"
+    },
+    {
+      "id": "A2",
+      "label": "`Theme.measure` (820) y `Theme.composeMeasure` (620) + modificador `.zeroMeasure(_:)`",
+      "status": "done"
+    },
+    {
+      "id": "A3",
+      "label": "Niveles de relleno y de trazo con nombre en `Theme`",
+      "status": "done"
+    },
+    {
+      "id": "A4",
+      "label": "Resolver `Theme.tertiaryOpacity` (`Theme.swift:18`): eliminarlo, o darle un valor propio con su ratio de...",
+      "status": "done"
+    },
+    {
+      "id": "A5",
+      "label": "`Scripts/lint-design-tokens.sh`: falla si aparece un `cornerRadius:` literal, un `.opacity(<literal>)`...",
+      "status": "done"
+    },
+    {
+      "id": "B1",
+      "label": "`CircleButton` como un único componente",
+      "status": "done"
+    },
+    {
+      "id": "B2",
+      "label": "`Composer` como componente que **posee su propio `@State draft`** y el estilo de la caja",
+      "status": "done"
+    },
+    {
+      "id": "B3",
+      "label": "`ConversationPane` y `ComposeView` lo consumen",
+      "status": "done"
+    },
+    {
+      "id": "B4",
+      "label": "Verificar la ganancia que B2 compra: con `draft` fuera de `ConversationPane`, una pulsación de tecla deja...",
+      "status": "done"
+    },
+    {
+      "id": "B5",
+      "label": "Separar por vista, siguiendo el patrón que ya establecen `Permissions/`, `Transcript/` y `Markdown/`:...",
+      "status": "done"
+    },
+    {
+      "id": "C1",
+      "label": "Tres niveles de elevación con nombre (canvas / raised / floating) sobre materiales nativos de macOS 26, en...",
+      "status": "done"
+    },
+    {
+      "id": "C2",
+      "label": "Cada superficie declara su nivel: composer y caja de compose → raised; tarjeta de permiso y popover de uso...",
+      "status": "done"
+    },
+    {
+      "id": "C3",
+      "label": "Fallback bajo `accessibilityReduceTransparency`: rellenos sólidos que preservan el mismo contraste y la...",
+      "status": "done"
+    },
+    {
+      "id": "C4",
+      "label": "`PreviewData` cubre los tres niveles a la vez en una sola pantalla, para poder juzgar la separación",
+      "status": "done"
+    },
+    {
+      "id": "D1",
+      "label": "Medir candidatos ámbar contra `ink` y contra `paper`, elegir, y **documentar el ratio**. Sin este número...",
+      "status": "done"
+    },
+    {
+      "id": "D2",
+      "label": "`Theme.accent`, aplicado **sólo** en dos lugares: `StateDot` cuando `awaiting` es true, y la superficie de...",
+      "status": "done"
+    },
+    {
+      "id": "D3",
+      "label": "Verificar la redundancia de FR-9: `StateDot` conserva su anillo y la superficie de permiso su forma, así...",
+      "status": "done"
+    },
+    {
+      "id": "D4",
+      "label": "Extender `Scripts/lint-design-tokens.sh`: `Theme.accent` referenciado en exactamente dos archivos",
+      "status": "done"
+    },
+    {
+      "id": "D5",
+      "label": "Actualizar la sección \"Palette\" de DESIGN.md: deja de decir \"There is no third color\" y pasa a describir...",
+      "status": "done"
+    },
+    {
+      "id": "E1",
+      "label": "Tratamiento de display para los dos anclajes que hoy se leen como formulario: el titular de `ComposeView`...",
+      "status": "done"
+    },
+    {
+      "id": "E2",
+      "label": "Helper de `Theme` para la face monoespaciada del sistema con el conjunto estilístico de cero alternativo...",
+      "status": "done"
+    },
+    {
+      "id": "E3",
+      "label": "Si el conjunto estilístico no está disponible, **parar y levantarlo** en vez de empaquetar una tipografía...",
+      "status": "done"
+    },
+    {
+      "id": "F1",
+      "label": "Tipos del diff calculado en `ZeroCore`: línea con marcador, número de línea en cada lado, agrupadas en hunks",
+      "status": "done"
+    },
+    {
+      "id": "F2",
+      "label": "Diff real por líneas **intercalado**, con `CollectionDifference` de la stdlib",
+      "status": "done"
+    },
+    {
+      "id": "F3",
+      "label": "Agrupación en hunks: contexto alrededor de cada cambio, tramos largos sin cambios colapsados",
+      "status": "done"
+    },
+    {
+      "id": "F4",
+      "label": "Caso `Write` (sin `oldText`): sigue mostrándose como bloque completo, sin inventar un diff contra nada",
+      "status": "done"
+    },
+    {
+      "id": "F5",
+      "label": "Tests en `Tests/ZeroCoreTests/`: intercalado correcto, números de línea en ambos lados, límites de hunk,...",
+      "status": "done"
+    },
+    {
+      "id": "F6",
+      "label": "`DiffView` renderiza el resultado",
+      "status": "done"
+    },
+    {
+      "id": "G1",
+      "label": "Espaciado derivado de la adyacencia de tipos en `TranscriptView`, en lugar de la constante `spacing: 18`",
+      "status": "done"
+    },
+    {
+      "id": "G2",
+      "label": "Tool calls consecutivas agrupadas en una corrida expandible (\"Read 4 files\")",
+      "status": "done"
+    },
+    {
+      "id": "G3",
+      "label": "La corrida **se auto-expande cuando la búsqueda coincide dentro** (Open question 3), para no regresionar...",
+      "status": "done"
+    },
+    {
+      "id": "G4",
+      "label": "`ToolCallCell.statusText` y la duración dejan de ser palabras crudas y milisegundos crudos (FR-19)",
+      "status": "done"
+    },
+    {
+      "id": "G5",
+      "label": "Etiquetas de accesibilidad para la corrida colapsada y expandida: hoy `ToolCallCell` ya tiene la suya y no...",
+      "status": "done"
+    },
+    {
+      "id": "H1",
+      "label": "Condicionar a `accessibilityReduceMotion` las **cinco** animaciones que ya existen...",
+      "status": "done"
+    },
+    {
+      "id": "H2",
+      "label": "Las cuatro nuevas de FR-20: fade por chunk del texto en streaming; transición de forma del tool call...",
+      "status": "done"
+    },
+    {
+      "id": "H3",
+      "label": "Verificar que las nueve colapsan a estático o instantáneo con movimiento reducido activado",
+      "status": "done"
+    },
+    {
+      "id": "I1",
+      "label": "`@ScaledMetric` en los cinco frames fijos: botón circular (`26x26` + `.system(size: 12)`), anillo...",
+      "status": "done"
+    },
+    {
+      "id": "I2",
+      "label": "Atajo de teclado para las pills de `PermissionModeControl`, hoy sólo alcanzables con el ratón, mientras...",
+      "status": "done"
+    },
+    {
+      "id": "I3",
+      "label": "Pasada de VoiceOver sobre lo nuevo: niveles de elevación, acento, corrida de tool calls, hunks del diff",
+      "status": "done"
+    },
+    {
+      "id": "J1",
+      "label": "DESIGN.md al día: la sección \"Palette\" con el acento y su ratio (viene de D5), \"Typography and shape\"...",
+      "status": "done"
+    },
+    {
+      "id": "J2",
+      "label": "`PreviewData.seed()` cubre cada estado nuevo, **siempre a través de `Transcript.apply`**, nunca...",
+      "status": "done"
+    },
+    {
+      "id": "J3",
+      "label": "Matriz de verificación manual en `ZeroPreview.app`: tema claro × tema oscuro × movimiento reducido ×...",
+      "status": "in-progress"
+    },
+    {
+      "id": "J4",
+      "label": "Escaneos de seguridad antes del gate 3: Snyk SAST, Snyk SCA y SonarQube",
+      "status": "blocked"
+    }
   ]
 }

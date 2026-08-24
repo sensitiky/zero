@@ -3,38 +3,43 @@ import ZeroCore
 
 /// The permission request, in the chat.
 ///
-/// A card in the same family as a tool call cell — rounded, stroked, no fill of accent color —
-/// rather than a flat highlighted bar. The operation is shown in full: truncating it is how someone
+/// A card in the same family as a tool call cell — rounded, floating over the conversation rather
+/// than a flat highlighted bar. The operation is shown in full: truncating it is how someone
 /// approves what they did not read (FR-23).
+///
+/// This is one of the two surfaces allowed to carry `Theme.accent`, and it carries it as a border
+/// rather than a fill: the card is already the only floating thing on screen and already has a
+/// shape of its own, so the hue reinforces "this is waiting on you" without becoming the only thing
+/// saying it.
 struct PermissionPrompt: View {
     let request: PermissionRequest
     let resolve: (PermissionOption) -> Void
     @Environment(\.colorScheme) private var scheme
+    /// How much of the operation is visible before it scrolls. In lines, effectively — so it grows
+    /// with the text rather than showing fewer and fewer of them.
+    @ScaledMetric(relativeTo: .callout) private var detailHeight: CGFloat = 140
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
                 Image(systemName: "hand.raised")
                     .font(.callout)
-                Text(request.toolName).font(.callout.weight(.medium)).monospaced()
+                Text(request.toolName).font(Theme.code(weight: .medium))
                 Text("wants to run this")
                     .font(.callout)
-                    .foregroundStyle(Theme.foreground(scheme).opacity(Theme.secondaryOpacity))
+                    .foregroundStyle(Theme.secondary(scheme))
                 Spacer(minLength: 0)
             }
 
             ScrollView {
                 Text(request.detail)
-                    .font(.callout.monospaced())
+                    .font(Theme.code())
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
             }
-            .frame(maxHeight: 140)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Theme.foreground(scheme).opacity(0.04))
-            )
+            .frame(maxHeight: detailHeight)
+            .zeroPanel(scheme, radius: Theme.Radius.content, elevation: .sunken, stroke: nil)
 
             HStack(spacing: 8) {
                 ForEach(request.options) { option in
@@ -46,17 +51,13 @@ struct PermissionPrompt: View {
             }
         }
         .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Theme.foreground(scheme).opacity(0.045))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Theme.foreground(scheme).opacity(0.16), lineWidth: 1)
-        )
+        .zeroPanel(scheme, radius: Theme.Radius.card, elevation: .floating, stroke: nil)
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                .stroke(Theme.accent, lineWidth: 1)
+        }
         .padding(.horizontal, 20)
-        .frame(maxWidth: 820)
-        .frame(maxWidth: .infinity)
+        .zeroMeasure()
         // Keyboard-first (FR-27): a permission prompt you can only answer with the mouse is a
         // permission prompt that gets answered carelessly.
         .accessibilityElement(children: .contain)
@@ -102,19 +103,19 @@ private struct PermissionButton: View {
                     Capsule().fill(
                         isPrimary
                             ? Theme.foreground(scheme)
-                            : Theme.foreground(scheme).opacity(hovering ? 0.10 : 0.0)
+                            : Theme.foreground(scheme).opacity(hovering ? Theme.Fill.hover : 0)
                     )
                 )
                 .overlay(
                     Capsule().stroke(
-                        Theme.foreground(scheme).opacity(isPrimary ? 0 : 0.22),
+                        Theme.foreground(scheme).opacity(isPrimary ? 0 : Theme.Stroke.control),
                         lineWidth: 1
                     )
                 )
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.1), value: hovering)
+        .zeroAnimation(Theme.Motion.feedback, value: hovering)
     }
 
     /// The single-approval path is the one filled control; both denials and "always" stay outlined
