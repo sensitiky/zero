@@ -12,12 +12,16 @@ import ZeroCore
 ///
 /// Both views below cache their parse in `@State`, recomputed only via `.task(id: text)` — i.e. only
 /// when `text` itself changes, never on an unrelated re-render. Parsing directly inside `body` was
-/// the input lag that came back after markdown landed: typing in the composer is local `@State` on
-/// `ConversationPane`, and every keystroke re-evaluates its whole body, which reconstructs
-/// `TranscriptView`, which re-evaluates every entry's row — so a plain `Text(styledInline(text))` in
+/// the input lag that came back after markdown landed: the draft used to be local `@State` on
+/// `ConversationPane`, so every keystroke re-evaluated its whole body, reconstructed
+/// `TranscriptView`, and re-evaluated every entry's row — a plain `Text(styledInline(text))` in
 /// `body` reparsed every message in the transcript on every keystroke, not just the one that
 /// streamed. Caching by `text`'s own identity is what makes a re-render free again when nothing this
 /// view actually shows has changed.
+///
+/// The keystroke half of that story is gone too: the draft now lives inside `Composer`, which is a
+/// leaf, so typing no longer invalidates anything above it. The cache stays, because streaming still
+/// changes one entry's text many times a second and the other entries must not pay for it.
 
 /// One line, inline styling only — a session title or its dimmed summary. Never multi-line: both
 /// callers already bound the source to one line before this ever sees it.
@@ -75,7 +79,11 @@ struct MarkdownBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array((rendered ?? [.paragraph(text: AttributedString(text))]).enumerated()), id: \.offset) { _, block in
+            // A block fades in as it arrives, so "still generating" is visible in the text itself
+            // rather than needing a spinner beside it (FR-20.1). Keyed on how many blocks there are,
+            // because that is what changes when a new one lands — the block being streamed into
+            // grows in place and must not re-fade on every chunk.
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .heading(let level, let content):
                     Text(content)
@@ -92,9 +100,15 @@ struct MarkdownBody: View {
                 }
             }
         }
+        .transition(.opacity)
+        .zeroAnimation(Theme.Motion.arrival, value: blocks.count)
         .task(id: text) {
             rendered = Self.render(text)
         }
+    }
+
+    private var blocks: [RenderedBlock] {
+        rendered ?? [.paragraph(text: AttributedString(text))]
     }
 
     private enum RenderedBlock {
@@ -129,21 +143,14 @@ private struct CodeBlock: View {
             if let language {
                 Text(language)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Theme.foreground(scheme).opacity(Theme.secondaryOpacity))
+                    .foregroundStyle(Theme.secondary(scheme))
             }
             Text(content)
-                .font(.callout.monospaced())
+                .font(Theme.code())
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Theme.foreground(scheme).opacity(0.04))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(Theme.foreground(scheme).opacity(0.12), lineWidth: 1)
-                )
+                .zeroPanel(scheme, radius: Theme.Radius.content, elevation: .raised)
         }
     }
 }

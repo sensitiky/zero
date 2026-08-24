@@ -31,16 +31,34 @@ struct PermissionModeControl: View {
                 .foregroundStyle(
                     selected
                         ? Theme.background(scheme)
-                        : Theme.foreground(scheme).opacity(Theme.secondaryOpacity)
+                        : Theme.secondary(scheme)
                 )
                 .background(Capsule().fill(selected ? Theme.foreground(scheme) : Color.clear))
                 .overlay(
-                    Capsule().stroke(Theme.foreground(scheme).opacity(selected ? 0 : 0.22), lineWidth: 1)
+                    Capsule().stroke(
+                        Theme.foreground(scheme).opacity(selected ? 0 : Theme.Stroke.control),
+                        lineWidth: 1
+                    )
                 )
         }
         .buttonStyle(.plain)
+        // FR-27 of 001 asks for full keyboard operation, and these pills were reachable only with
+        // the mouse while the permission prompt right above them had a/A/d/D. Command-digit rather
+        // than a bare letter: the composer has focus almost all the time here, and a bare letter
+        // would be swallowed by it — or worse, typed into the message.
+        .keyboardShortcut(shortcut(for: candidate), modifiers: .command)
+        .help("\(candidate.label) permission mode")
         .accessibilityLabel("\(candidate.label) permission mode")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    /// In the order the pills are in, which is the order the modes escalate in.
+    private func shortcut(for candidate: PermissionMode) -> KeyEquivalent {
+        switch candidate {
+        case .ask: "1"
+        case .auto: "2"
+        case .bypass: "3"
+        }
     }
 }
 
@@ -53,7 +71,7 @@ struct BypassWarning: View {
     var body: some View {
         Text("Bypass: nothing asks permission here, including web access.")
             .font(.caption)
-            .foregroundStyle(Theme.foreground(scheme).opacity(Theme.secondaryOpacity))
+            .foregroundStyle(Theme.secondary(scheme))
             .accessibilityLabel("Warning: Bypass mode never asks permission, including for web access")
     }
 }
