@@ -36,15 +36,18 @@ enum Theme {
     /// is what lets a hue exist here without breaking the accessibility argument the monochrome rule
     /// was built on.
     ///
-    /// **Measured, not picked by eye.** `#A16B0E` is 4.09:1 against `ink` and 4.09:1 against
-    /// `paper` — the same value in both themes, and the highest either ratio can be: a single colour
-    /// sitting between two backgrounds 16.74:1 apart maximises its weaker side by balancing them,
-    /// and that balance point is 4.09:1. It never renders text, so the threshold that applies is the
-    /// 3:1 of WCAG 1.4.11 for non-text contrast, which it clears in both themes with room to spare.
+    /// **Chosen by eye, then measured.** `#8B5CF6` is 4.39:1 against `ink` and 3.82:1 against
+    /// `paper`. It never renders text, so the threshold that applies is the 3:1 of WCAG 1.4.11 for
+    /// non-text contrast, and it clears that in both themes.
+    ///
+    /// It is not the balance point — a single colour sitting between two backgrounds 16.74:1 apart
+    /// maximises its weaker side at 4.09:1, and this trades some of the light-mode side for the hue
+    /// that was wanted. 3.82:1 is still comfortably above the bar, so the trade is affordable; the
+    /// number is written down so the next person changing this knows where the floor is.
     ///
     /// One value rather than one per theme, deliberately: a hue that shifts with the theme is a
-    /// second thing to keep measured, and this one is already at the ceiling of what it can be.
-    static let accent = Color(red: 0xA1 / 255, green: 0x6B / 255, blue: 0x0E / 255)
+    /// second thing to keep measured.
+    static let accent = Color(red: 0x8B / 255, green: 0x5C / 255, blue: 0xF6 / 255)
 
     static func background(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? ink : paper
@@ -52,6 +55,54 @@ enum Theme {
 
     static func foreground(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? paper : ink
+    }
+
+    /// How far the selected row's fill steps back off full foreground weight.
+    ///
+    /// Full `ink` under a sidebar row reads as a hole punched in the window rather than as a
+    /// selection — the one place in this app where the foreground token covers an area instead of
+    /// drawing on one, and at that size it is simply too heavy.
+    ///
+    /// A **mix**, not an opacity: this fill's other job is to cover AppKit's own highlight (see
+    /// `SessionSidebar`), and 10% of translucency is 10% of that blue coming through. Mixed, the
+    /// light-mode fill is `#292929` and the dark-mode fill `#dcdcdc`, and the row on it measures
+    /// 13.0:1 for the title in either theme, 7.2:1 (light) and 6.0:1 (dark) for the summary at the
+    /// 70% floor — the same asymmetry the floor already has everywhere else in the app.
+    static let selectionSoftening: Double = 0.10
+
+    /// The fill for a selected sidebar row: the foreground token, softened toward the background.
+    static func rowSelection(_ scheme: ColorScheme) -> Color {
+        // `.device` rather than the default perceptual space: this is a straight sRGB step between
+        // two known values, so the result is the hex written above rather than whatever Oklab makes
+        // of it — a value in this file should be one you can check with a colour picker.
+        foreground(scheme).mix(with: background(scheme), by: selectionSoftening, in: .device)
+    }
+
+    /// The foreground for content on a selected sidebar row.
+    ///
+    /// Left alone, AppKit fills a selected row with the *system* accent colour — a saturated blue
+    /// nobody here chose, that answers to no measurement in this document, and that changes under
+    /// the app when the user picks a different one in System Settings. In light mode it puts `paper`
+    /// at 4.6:1 and the accent dot at 1.2:1, in a palette whose whole argument is 16.74:1 and one
+    /// hue. `SessionSidebar` paints that fill itself instead, with the foreground token.
+    ///
+    /// So a selected row **inverts**: the fill is the foreground token, so the content on it is the
+    /// background token — back at the same 16.74:1 as every other surface in the app, with the
+    /// ordinary 70% floor for the summary underneath it.
+    ///
+    /// Selection is passed in rather than read from `backgroundProminence`, which is what an earlier
+    /// version did: supplying a `.listRowBackground` is what covers AppKit's fill, and doing so also
+    /// makes the platform stop reporting the row as prominent. The environment then describes a
+    /// treatment that is no longer on screen, so the row that is painted ink read itself as
+    /// unselected and drew ink on ink. What we paint is what we have to answer to.
+    static func rowForeground(_ scheme: ColorScheme, selected: Bool) -> Color {
+        selected ? background(scheme) : foreground(scheme)
+    }
+
+    /// The row foreground at the secondary floor. The same 70% that applies everywhere else, which
+    /// it can be again now that the fill under it is a token rather than the system accent.
+    static func rowSecondary(_ scheme: ColorScheme, selected: Bool) -> Color {
+        rowForeground(scheme, selected: selected).opacity(secondaryOpacity)
     }
 
     /// The foreground at the secondary floor. Its own function because it is the single most repeated

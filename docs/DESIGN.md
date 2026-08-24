@@ -18,7 +18,12 @@ Two tokens, taken from the logo — a glyph built from two crescents forming a z
 Neither pure black nor pure white appears anywhere. Contrast is 16.74:1 — below the 21:1 of
 `#000`/`#fff`, comfortably past the 7:1 WCAG AAA asks for.
 
-**The floor for secondary text is 70% opacity of the foreground token.** At 70% the contrast is
+**The floor for secondary text is 70% opacity of the foreground token**, except over a focused
+sidebar selection, where it rises to 90% (`Theme.selectedSecondaryOpacity`) — 70% of `paper` on that
+fill is 3.35:1, and 90% is 4.54:1. On a selected row the summary is already a size smaller, so size
+carries the hierarchy and contrast takes priority.
+
+ At 70% the contrast is
 7.91:1, still AAA. At 55% it drops to 5.10:1 — AA only. Never go below 70%. Every dimmed label in
 this app — session summaries, field placeholders, the "unknown" states — uses exactly `Theme.
 secondaryOpacity`, not a hand-picked gray.
@@ -29,12 +34,13 @@ There is one hue, and it has one job: **the agent is waiting for you**.
 
 | Token | Value | vs `ink` | vs `paper` |
 |---|---|---|---|
-| `accent` | `#a16b0e` | 4.09:1 | 4.09:1 |
+| `accent` | `#8b5cf6` | 4.39:1 | 3.82:1 |
 
-The same value in both themes, and that is the highest either ratio can be: a single color sitting
-between two backgrounds 16.74:1 apart maximizes its weaker side by balancing them, and the balance
-point is 4.09:1. It never renders text, so the threshold that applies is the 3:1 of WCAG 1.4.11 for
-non-text contrast, cleared in both themes. The value was measured, not picked.
+The same value in both themes. It never renders text, so the threshold that applies is the 3:1 of
+WCAG 1.4.11 for non-text contrast, cleared in both. It is not the balance point — a single color
+sitting between two backgrounds 16.74:1 apart maximizes its weaker side at 4.09:1 — but 3.82:1 is
+comfortably above the bar. **Whatever this value becomes, both numbers get measured and written
+here**; that is the rule, not the hue.
 
 It appears in exactly two places — `StateDot` when a session is waiting on you, and the pending
 permission card — and `Scripts/lint-design-tokens.sh` fails the build if a third file references it.
@@ -42,6 +48,36 @@ permission card — and `Scripts/lint-design-tokens.sh` fails the build if a thi
 **It is always redundant.** The dot keeps its ring at full foreground weight and the card keeps its
 floating shape and shadow, so desaturate the screen and the same information is still there (WCAG
 1.4.1). That is the condition on which the accent exists at all.
+
+**A selected row is ours to color, and it took some finding out.** Left alone, the sidebar fills a
+selected row with the **system** accent color — the user's choice in System Settings, not a value
+from this document: in light mode a saturated blue that puts the row's own text at 4.6:1 and the
+accent dot at 1.2:1, in a palette whose whole argument is 16.74:1 and one hue. `.tint()` does not
+reach it; the sidebar style takes that color from AppKit rather than from the environment, which was
+measured rather than assumed. A `.listRowBackground` does reach it, so `SessionSidebar` paints the
+fill with the foreground token and the row **inverts** onto it: content in the background token at
+16.74:1, the summary at the ordinary 70% floor, the accent dot back at its own 4.39:1 / 3.82:1
+instead of 1.2:1 on blue.
+
+The fill is the foreground token **softened 10% toward the background** — `#292929` on light,
+`#dcdcdc` on dark (`Theme.selectionSoftening`). Full `ink` across a row reads as a hole punched in
+the window rather than as a selection; it is the one place the foreground token covers an area
+instead of drawing on one. A mix rather than an opacity, because the fill's other job is covering
+AppKit's highlight, and 10% translucent is 10% of that blue coming through. On it the title measures
+13.0:1 in either theme and the summary 7.2:1 light / 6.0:1 dark at the 70% floor.
+
+**Every row gets that background, not only the selected one.** A transparent one on the rest is what
+made the blue flash on click: AppKit highlights a row the instant the mouse goes down, while our own
+selection state only catches up on the next render, and for that gap nothing covered the highlight.
+The unselected fill is the colour the sidebar is already painted with, so it is invisible except in
+the one job it does, which is being opaque.
+
+Two more consequences worth writing down. Selection is passed into `SessionRow` explicitly, because
+supplying that background is also what makes the platform stop reporting the row as prominent —
+`backgroundProminence` then describes a treatment that is no longer on screen, and the row painted
+ink drew ink on ink. And the fill keeps full weight when the window loses focus, where AppKit would
+fade to gray: one row out of dozens says "this is the session you are in", and that is worth reading
+from across the desk.
 
 Everything else is carried by **weight, fill, shape and position** — never by hue. No status, no
 primary action, no link, no session state, no ring. This is not a stylistic preference; it is what

@@ -41,10 +41,14 @@ apart, that is the finding.
 
 ### 2. The accent (FR-8, FR-9, FR-10)
 
-`#a16b0e`, measured at 4.09:1 against both `ink` and `paper`.
+`#8b5cf6`, measured at 4.39:1 against `ink` and 3.82:1 against `paper`.
 
 - It appears in **exactly two places**: the state dot of the waiting session in the sidebar, and the
   border of the permission card. Look for it anywhere else — a button, the usage ring, a link.
+- **Select the waiting session.** The row fills with the foreground token, not with the system accent
+  color — no blue in light mode, whatever the accent is set to in System Settings — and title,
+  summary, dot and ring all invert onto it and stay readable. Then click another window: the fill
+  stays at full weight rather than fading to gray.
 - **Then turn the screen greyscale** (System Settings → Accessibility → Display → Color Filters →
   Grayscale). Everything must still be readable: the waiting dot keeps its ring at full foreground
   weight, and the card keeps its shape and shadow. If any information is lost, FR-9 has failed.
