@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-24T13:22:53Z",
+  "updatedAt": "2026-08-24T13:32:35Z",
   "flow": "feature",
   "way": "incu/dev",
   "wayVersion": "",
@@ -12,7 +12,7 @@
   "title": "Rediseño visual (overhaul): material, acento único, ritmo y diff real",
   "ticket": null,
   "lastPhase": "implementation",
-  "phase": "implementation",
+  "phase": "pr-develop",
   "documents": [
     {
       "name": "PRD.md",
@@ -53,7 +53,8 @@
       "id": "pr-develop",
       "label": "PR feat→develop",
       "status": "pending",
-      "at": null
+      "at": null,
+      "url": "https://github.com/sensitiky/zero/pull/14"
     },
     {
       "id": "pr-main",
