@@ -23,32 +23,100 @@ Neither pure black nor pure white appears anywhere. Contrast is 16.74:1 — belo
 this app — session summaries, field placeholders, the "unknown" states — uses exactly `Theme.
 secondaryOpacity`, not a hand-picked gray.
 
-There is no third color. Status, emphasis and hierarchy are carried by **weight, fill, shape and
-position** — never by hue. This is not a stylistic preference; it is what makes the app work for
-someone who cannot tell two grays apart, and it is why every "is this the primary action" decision
-in this codebase gets answered with a filled shape, not a colored one.
+### The one accent
+
+There is one hue, and it has one job: **the agent is waiting for you**.
+
+| Token | Value | vs `ink` | vs `paper` |
+|---|---|---|---|
+| `accent` | `#a16b0e` | 4.09:1 | 4.09:1 |
+
+The same value in both themes, and that is the highest either ratio can be: a single color sitting
+between two backgrounds 16.74:1 apart maximizes its weaker side by balancing them, and the balance
+point is 4.09:1. It never renders text, so the threshold that applies is the 3:1 of WCAG 1.4.11 for
+non-text contrast, cleared in both themes. The value was measured, not picked.
+
+It appears in exactly two places — `StateDot` when a session is waiting on you, and the pending
+permission card — and `Scripts/lint-design-tokens.sh` fails the build if a third file references it.
+
+**It is always redundant.** The dot keeps its ring at full foreground weight and the card keeps its
+floating shape and shadow, so desaturate the screen and the same information is still there (WCAG
+1.4.1). That is the condition on which the accent exists at all.
+
+Everything else is carried by **weight, fill, shape and position** — never by hue. No status, no
+primary action, no link, no session state, no ring. This is not a stylistic preference; it is what
+makes the app work for someone who cannot tell two colors apart, and it is why every "is this the
+primary action" decision in this codebase gets answered with a filled shape, not a colored one.
 
 ## Typography and shape
 
-System font throughout — no custom typeface. Monospace only where the content is code, a
-command, a diff, or a token count: `ToolCallCell`, `DiffView`, the permission card's operation
-text, every `.monospacedDigit()` count. Prose is never monospaced.
+These are **tokens in `Theme`, not conventions to remember.** That distinction is the whole point:
+the version of this section that described a radius scale in prose drifted, because the views used
+22, 14, 10, 8, 6 and 4 while the document said 22 / 14 / 6-8. `Scripts/lint-design-tokens.sh` fails
+the build on a literal radius, measure, surface opacity or animation in `Sources/Zero`, and runs in
+CI on every PR.
 
-Corner radius says what kind of thing something is:
+System font throughout — no custom typeface.
 
-- **22pt, continuous** — the composer and its equivalent in `ComposeView`. The one thing you type
-  into.
-- **14pt** — the permission card. A decision, not a message.
-- **6–8pt** — tool call cells, diff blocks, the search field. Content, not chrome.
-- **Capsule** — buttons inside the permission card. An action, always.
+| Token | What it is for |
+|---|---|
+| `Theme.display(_:)` + `displayTracking` | The two places a screen asks a question and has nothing else on it: the `ComposeView` headline and `EmptyStatePane`. |
+| `Theme.code(_:weight:)` | Anything that is code: a path, a command, a diff, a tool name, a model id. |
+| `Theme.secondary(_:)` | Every dimmed label, at the 70% floor and never below it. |
+
+**On the mono face.** `Theme.code` uses the monospaced system face at its defaults, and deliberately
+does *not* enable the "Alternate 0 no slash" stylistic set (type 35, selector 6). The default face
+already ships the slashed zero, and `0`, `O`, `1`, `l` and `I` are already five distinct glyphs; the
+alternate set takes the slash *away*. The requirement was to make those characters distinguishable,
+and the way to meet it is to leave the glyphs alone and route every code surface through one helper.
+
+Corner radius says what kind of thing something is — `Theme.Radius`:
+
+- **`composer`, 22pt continuous** — the composer and its equivalent in `ComposeView`. The one thing
+  you type into.
+- **`card`, 14pt** — the permission card. A decision, not a message.
+- **`content`, 8pt** — code blocks, diff containers, the user's own message.
+- **`inline`, 6pt** — tool call cells, the search field. Chrome around content.
+- **Capsule** — buttons inside the permission card, and the permission mode pills. An action, always.
+
+## Elevation
+
+Four named levels in `Theme.Elevation`, and a view picks a level rather than a fill. Above `canvas`
+they are drawn with native macOS materials, so a surface picks up what is behind it instead of being
+a flat grey rectangle.
+
+| Level | What sits there |
+|---|---|
+| `canvas` | The window, the sidebar, the transcript. No surface of its own. |
+| `sunken` | A well inside another surface: the permission card's operation text. |
+| `raised` | The composer, tool call cells, code blocks, diffs, the user's own message, the search field. |
+| `floating` | The permission card and the usage popover. Arrived over everything, and holds the interaction. |
+
+Under `accessibilityReduceTransparency` every level falls back to a solid fill picked to keep the
+same separation between adjacent levels. Only `floating` casts a shadow, and softly — it says "this
+is over what you were reading", not "this is a card in a stack of cards".
+
+## Motion
+
+Nine animations, four durations, and every one of them reports a state change or gives feedback.
+Nothing here is decoration and nothing repeats forever.
+
+`Theme.Motion` holds the durations: `feedback` (0.1s, a control you are touching), `value` (0.25s, a
+number moving to a new number), `arrival` (0.2s, something appearing), `scroll` (0.15s, the
+transcript following the conversation).
+
+**Every animation goes through `.zeroAnimation(_:value:)`**, which honours
+`accessibilityReduceMotion` — so respecting it is the default and skipping it takes effort. The lint
+rejects a raw `.animation(` or `withAnimation(` anywhere in `Sources/Zero`.
 
 ## The controls that recur
 
-**The circle button.** One filled circle, foreground-on-background, an SF Symbol at 12pt bold
-inside. It is the *only* filled circular control in the app, and it always means "send" or "stop."
-`ConversationPane.circleButton` and `ComposeView.circleButton` are two copies of the same shape on
-purpose — starting a session and continuing one are the same act, and two different controls
-would say otherwise.
+**The circle button.** One filled circle, foreground-on-background, an SF Symbol inside, scaling
+with Dynamic Type. It is the *only* filled circular control in the app, and it always means "send"
+or "stop". It is one component, `CircleButton`, used by both composers — starting a session and
+continuing one are the same act, and two different controls would say otherwise. So is the box
+around it: `Composer` is one component that owns the draft text, which is also why typing no longer
+re-renders the transcript behind it.
 
 **Filled means primary.** A pill button in the permission card is filled only for `.allowOnce` —
 the one action worth defaulting to. Every other option, including "Allow Always" and both denials,
@@ -63,8 +131,10 @@ costs and the control that sends it.
 
 **State without color.** `StateDot` in the sidebar uses opacity and a ring, not hue, to distinguish
 running / idle / finished / waiting-for-you. `PlanList` uses glyphs (`○ ◐ ●`), not colored
-checkmarks. A diff's added and removed lines are told apart by a `+`/`−` marker and a faint tint of
-the single foreground token — never red and green.
+checkmarks. A diff's added and removed lines are told apart by a `+`/`−` marker, a line number on each
+side, and a faint tint of the single foreground token — never red and green. `ToolStatusMark` is one
+circle that grows from empty to half to full, so pending, running and done are a shape changing
+rather than a word being swapped.
 
 ## Layout
 
@@ -91,9 +161,22 @@ an explicit accessibility label — `StateDot`, `PlanList`, `PermissionButton`. 
 gets the same information a sighted user gets from a dot's ring or a pill's fill, spelled out
 rather than inferred.
 
-The app is fully keyboard-operable (FR-27): ⌘N for a new session, ⌘⇧] / ⌘⇧[ between sessions, and
-every permission option has a single-letter shortcut (`a`/`A`/`d`/`D`) so a permission prompt never
-requires reaching for the mouse — the thing most likely to get answered carelessly if it does.
+The app is fully keyboard-operable (FR-27): ⌘N for a new session, ⌘⇧] / ⌘⇧[ between sessions, ⌘1 /
+⌘2 / ⌘3 for the Ask / Auto / Bypass permission mode, and every permission option has a single-letter
+shortcut (`a`/`A`/`d`/`D`) so a permission prompt never requires reaching for the mouse — the thing
+most likely to get answered carelessly if it does. The mode pills use command-digit rather than a
+bare letter because the composer holds focus almost all the time, and a bare letter would be typed
+into the message instead.
+
+**Dynamic Type.** Every fixed frame in the app is `@ScaledMetric`: the circle button and its glyph,
+the usage ring and its popover, the state dot and its ring, the diff's line-number gutter, the tool
+status mark, the permission detail, the model field. A control that stays 26pt while the text beside
+it doubles is a control you can no longer hit.
+
+**Reduced motion and reduced transparency** are both honoured, and both are enforced rather than
+remembered — see Motion and Elevation above.
+
+**Color is never load-bearing**, including the one accent: see Palette.
 
 ## Process rule: every UI change updates the preview too
 

@@ -1,8 +1,7 @@
 import SwiftUI
 import ZeroCore
 
-/// The shell: projects and their sessions on the left, the active conversation in the middle, its
-/// accounting on the right.
+/// The shell: projects and their sessions on the left, the active conversation beside them.
 struct RootView: View {
     @Bindable var model: AppModel
     @Bindable var coordinator: SessionCoordinator
@@ -41,11 +40,13 @@ struct EmptyStatePane: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        VStack(spacing: 8) {
-            Text(title).font(.title3.weight(.medium))
+        VStack(spacing: 10) {
+            Text(title)
+                .font(Theme.display(.title2))
+                .tracking(Theme.displayTracking)
             Text(detail)
                 .font(.callout)
-                .foregroundStyle(Theme.foreground(scheme).opacity(Theme.secondaryOpacity))
+                .foregroundStyle(Theme.secondary(scheme))
                 .multilineTextAlignment(.center)
         }
         .padding(40)

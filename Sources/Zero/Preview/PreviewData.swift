@@ -60,12 +60,25 @@ enum PreviewData {
         ]
         for event in openingEvents { session.transcript.apply(event) }
 
-        session.transcript.apply(.toolCall(
-            ToolCall(
-                id: "t1", name: "Read", input: "Sources/API/Webhooks/Handler.swift",
-                output: "213 lines", status: .succeeded
-            )
-        ))
+        // A run of back-to-back reads, so the preview shows what `ToolRunCell` collapses to — the
+        // case the transcript used to render as four separate boxes. Timed, so the humanized
+        // duration (FR-19) has something to show instead of nothing.
+        let readingStarted = Date().addingTimeInterval(-30)
+        for (index, path) in [
+            "Sources/API/Webhooks/Handler.swift",
+            "Sources/API/Webhooks/Payload.swift",
+            "Sources/API/RateLimiting/TokenBucket.swift",
+            "Tests/APITests/WebhookHandlerTests.swift",
+        ].enumerated() {
+            session.transcript.apply(.toolCall(
+                ToolCall(
+                    id: "t1-\(index)", name: "Read", input: path,
+                    output: "\(120 + index * 31) lines", status: .succeeded,
+                    startedAt: readingStarted.addingTimeInterval(Double(index)),
+                    endedAt: readingStarted.addingTimeInterval(Double(index) + 0.4)
+                )
+            ))
+        }
 
         session.transcript.apply(.textDelta(
             "No rate limiter yet. I'll add a small token-bucket limiter keyed by client id, checked "
@@ -84,8 +97,75 @@ enum PreviewData {
                 output: nil, status: .running,
                 edit: FileEdit(
                     path: "Sources/API/Webhooks/Handler.swift",
-                    oldText: "func handle(_ request: Request) async throws -> Response {\n    let payload = try request.decode(WebhookPayload.self)",
-                    newText: "func handle(_ request: Request) async throws -> Response {\n    guard rateLimiter.allow(clientID: request.clientID) else {\n        return Response(status: .tooManyRequests)\n    }\n    let payload = try request.decode(WebhookPayload.self)"
+                    oldText: """
+                    import Foundation
+
+                    struct Handler {
+                        let store: EventStore
+                        let decoder: JSONDecoder
+
+                        func handle(_ request: Request) async throws -> Response {
+                            let payload = try request.decode(WebhookPayload.self)
+                            try await store.record(payload)
+                            return Response(status: .accepted)
+                        }
+
+                        func verify(_ request: Request) throws {
+                            guard request.signature.isPresent else {
+                                throw HandlerError.unsigned
+                            }
+                            guard request.timestamp.isRecent else {
+                                throw HandlerError.stale
+                            }
+                        }
+
+                        func acknowledge(_ id: Event.ID) async throws {
+                            try await store.markDelivered(id)
+                        }
+
+                        func replay(_ id: Event.ID) async throws -> Response {
+                            let event = try await store.event(id)
+                            return Response(status: .ok, body: event.body)
+                        }
+                    }
+                    """,
+                    newText: """
+                    import Foundation
+
+                    struct Handler {
+                        let store: EventStore
+                        let decoder: JSONDecoder
+                        let rateLimiter: RateLimiter
+
+                        func handle(_ request: Request) async throws -> Response {
+                            guard rateLimiter.allow(clientID: request.clientID) else {
+                                return Response(status: .tooManyRequests)
+                            }
+                            let payload = try request.decode(WebhookPayload.self)
+                            try await store.record(payload)
+                            return Response(status: .accepted)
+                        }
+
+                        func verify(_ request: Request) throws {
+                            guard request.signature.isPresent else {
+                                throw HandlerError.unsigned
+                            }
+                            guard request.timestamp.isRecent else {
+                                throw HandlerError.stale
+                            }
+                        }
+
+                        func acknowledge(_ id: Event.ID) async throws {
+                            try await store.markDelivered(id)
+                        }
+
+                        func replay(_ id: Event.ID) async throws -> Response {
+                            let event = try await store.event(id)
+                            try await acknowledge(id)
+                            return Response(status: .ok, body: event.body)
+                        }
+                    }
+                    """
                 )
             )
         ))
@@ -94,8 +174,75 @@ enum PreviewData {
                 id: "t2", name: "Edit", input: nil, output: "applied", status: .succeeded,
                 edit: FileEdit(
                     path: "Sources/API/Webhooks/Handler.swift",
-                    oldText: "func handle(_ request: Request) async throws -> Response {\n    let payload = try request.decode(WebhookPayload.self)",
-                    newText: "func handle(_ request: Request) async throws -> Response {\n    guard rateLimiter.allow(clientID: request.clientID) else {\n        return Response(status: .tooManyRequests)\n    }\n    let payload = try request.decode(WebhookPayload.self)"
+                    oldText: """
+                    import Foundation
+
+                    struct Handler {
+                        let store: EventStore
+                        let decoder: JSONDecoder
+
+                        func handle(_ request: Request) async throws -> Response {
+                            let payload = try request.decode(WebhookPayload.self)
+                            try await store.record(payload)
+                            return Response(status: .accepted)
+                        }
+
+                        func verify(_ request: Request) throws {
+                            guard request.signature.isPresent else {
+                                throw HandlerError.unsigned
+                            }
+                            guard request.timestamp.isRecent else {
+                                throw HandlerError.stale
+                            }
+                        }
+
+                        func acknowledge(_ id: Event.ID) async throws {
+                            try await store.markDelivered(id)
+                        }
+
+                        func replay(_ id: Event.ID) async throws -> Response {
+                            let event = try await store.event(id)
+                            return Response(status: .ok, body: event.body)
+                        }
+                    }
+                    """,
+                    newText: """
+                    import Foundation
+
+                    struct Handler {
+                        let store: EventStore
+                        let decoder: JSONDecoder
+                        let rateLimiter: RateLimiter
+
+                        func handle(_ request: Request) async throws -> Response {
+                            guard rateLimiter.allow(clientID: request.clientID) else {
+                                return Response(status: .tooManyRequests)
+                            }
+                            let payload = try request.decode(WebhookPayload.self)
+                            try await store.record(payload)
+                            return Response(status: .accepted)
+                        }
+
+                        func verify(_ request: Request) throws {
+                            guard request.signature.isPresent else {
+                                throw HandlerError.unsigned
+                            }
+                            guard request.timestamp.isRecent else {
+                                throw HandlerError.stale
+                            }
+                        }
+
+                        func acknowledge(_ id: Event.ID) async throws {
+                            try await store.markDelivered(id)
+                        }
+
+                        func replay(_ id: Event.ID) async throws -> Response {
+                            let event = try await store.event(id)
+                            try await acknowledge(id)
+                            return Response(status: .ok, body: event.body)
+                        }
+                    }
+                    """
                 )
             )
         ))
@@ -170,7 +317,27 @@ enum PreviewData {
             initialPrompt: "Rotate the staging API key and update the deploy script."
         )
         session.transcript.appendUserMessage(session.initialPrompt)
-        session.transcript.apply(.textDelta("I need to run this to regenerate the key and write it to the deploy config."))
+        // Enough above the card to judge all three elevation levels at once: the canvas behind the
+        // transcript, raised surfaces (the tool call, the code block, the user's own message) on it,
+        // and the floating permission card over both. Separation between levels is only meaningful
+        // when they are on screen together.
+        session.transcript.apply(.toolCall(
+            ToolCall(
+                id: "w1", name: "Read", input: "deploy/staging.key",
+                output: "1 file, 1 line", status: .succeeded
+            )
+        ))
+        session.transcript.apply(.textDelta("""
+            The current key is still the one from the initial provision, so it has to be replaced \
+            rather than re-signed:
+
+            ```bash
+            curl -X POST https://api.staging.internal/keys/rotate \\
+              -H "Authorization: Bearer $ADMIN_TOKEN"
+            ```
+
+            I need to run this to regenerate the key and write it to the deploy config.
+            """))
         session.transcript.apply(.permissionRequested(
             PermissionRequest(
                 id: "perm-1",
