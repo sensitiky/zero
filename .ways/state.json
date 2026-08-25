@@ -11,8 +11,8 @@
   "isolationType": "branch",
   "title": "Persistent projects and sessions across app restarts",
   "ticket": null,
-  "lastPhase": "validation",
-  "phase": "review",
+  "lastPhase": "review",
+  "phase": "pr-develop",
   "documents": [
     {
       "name": "PRD.md",
@@ -53,7 +53,8 @@
       "id": "pr-develop",
       "label": "PR feat→develop",
       "status": "pending",
-      "at": null
+      "at": null,
+      "url": "https://github.com/sensitiky/zero/pull/18"
     },
     {
       "id": "pr-main",
