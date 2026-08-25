@@ -1,32 +1,37 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-24T13:32:35Z",
+  "updatedAt": "2026-08-25T16:02:46Z",
   "flow": "feature",
   "way": "incu/dev",
   "wayVersion": "",
   "discipline": "development",
-  "slug": "004-ui-visual-overhaul",
-  "branch": "feat/004-ui-visual-overhaul",
+  "slug": "005-mobile-remote-bridge",
+  "branch": "feat/005-mobile-remote-bridge",
   "worktree": "",
   "isolationType": "branch",
-  "title": "Rediseño visual (overhaul): material, acento único, ritmo y diff real",
+  "title": "Mobile Remote Bridge — local HTTP + WebSocket API over the running Zero runtime",
   "ticket": null,
   "lastPhase": "implementation",
-  "phase": "pr-develop",
+  "phase": "validation",
   "documents": [
     {
       "name": "PRD.md",
-      "path": "docs/prds/004-ui-visual-overhaul/PRD.md",
+      "path": "docs/prds/005-mobile-remote-bridge/PRD.md",
+      "status": "approved"
+    },
+    {
+      "name": "CONTRACT.md",
+      "path": "docs/prds/005-mobile-remote-bridge/CONTRACT.md",
       "status": "approved"
     },
     {
       "name": "PLAN.md",
-      "path": "docs/prds/004-ui-visual-overhaul/PLAN.md",
+      "path": "docs/prds/005-mobile-remote-bridge/PLAN.md",
       "status": "approved"
     },
     {
       "name": "TESTING.md",
-      "path": "docs/prds/004-ui-visual-overhaul/TESTING.md",
+      "path": "docs/prds/005-mobile-remote-bridge/TESTING.md",
       "status": "draft"
     }
   ],
@@ -35,13 +40,13 @@
       "id": "prd",
       "label": "PRD review",
       "status": "passed",
-      "at": "2026-08-23T20:57:44Z"
+      "at": "2026-08-24T20:54:37Z"
     },
     {
       "id": "plan",
       "label": "Plan review",
       "status": "passed",
-      "at": "2026-08-23T20:58:58Z"
+      "at": "2026-08-24T20:58:45Z"
     },
     {
       "id": "testing",
@@ -53,8 +58,7 @@
       "id": "pr-develop",
       "label": "PR feat→develop",
       "status": "pending",
-      "at": null,
-      "url": "https://github.com/sensitiky/zero/pull/14"
+      "at": null
     },
     {
       "id": "pr-main",
@@ -66,218 +70,197 @@
   "steps": [
     {
       "id": "A1",
-      "label": "Escala de radios como tokens con nombre en `Theme` (`composer` 22, `card` 14, `content` 8, `inline` 6)",
+      "label": "Package.swift: ZeroBridge target (swiftLanguageMode(.v6), depends on ZeroCore), ZeroBridgeTests test target…",
       "status": "done"
     },
     {
       "id": "A2",
-      "label": "`Theme.measure` (820) y `Theme.composeMeasure` (620) + modificador `.zeroMeasure(_:)`",
+      "label": "API/DTO/: every type in CONTRACT.md as a Codable, Sendable value type — ProjectDTO, SessionSummaryDTO, Sess…",
       "status": "done"
     },
     {
       "id": "A3",
-      "label": "Niveles de relleno y de trazo con nombre en `Theme`",
+      "label": "API/Projection.swift: SessionState → status (FR-11, total, no default: — the compiler must fail when a sixt…",
       "status": "done"
     },
     {
       "id": "A4",
-      "label": "Resolver `Theme.tertiaryOpacity` (`Theme.swift:18`): eliminarlo, o darle un valor propio con su ratio de...",
+      "label": "affectedEntry(in:for:) — pure: given [Transcript.Entry] and an AgentEvent, the entry that event touched (la…",
       "status": "done"
     },
     {
       "id": "A5",
-      "label": "`Scripts/lint-design-tokens.sh`: falla si aparece un `cornerRadius:` literal, un `.opacity(<literal>)`...",
+      "label": "AgentEvent + affected entry → BridgeEvent? (FR-22/23), including the events that produce nothing on the wir…",
+      "status": "done"
+    },
+    {
+      "id": "A6",
+      "label": "Tests: every SessionState maps, every Transcript.Entry case encodes, every AgentEvent case either maps or i…",
       "status": "done"
     },
     {
       "id": "B1",
-      "label": "`CircleButton` como un único componente",
+      "label": "HTTPRequest + HTTPRequestParser: incremental, fed arbitrary chunk boundaries. Request line, headers (case-i…",
       "status": "done"
     },
     {
       "id": "B2",
-      "label": "`Composer` como componente que **posee su propio `@State draft`** y el estilo de la caja",
+      "label": "HTTPResponse: status, headers, body, serialization. JSON content type by default.",
       "status": "done"
     },
     {
       "id": "B3",
-      "label": "`ConversationPane` y `ComposeView` lo consumen",
+      "label": "WebSocketHandshake: detect the upgrade, compute Sec-WebSocket-Accept (CryptoKit.Insecure.SHA1 + base64), bu…",
       "status": "done"
     },
     {
       "id": "B4",
-      "label": "Verificar la ganancia que B2 compra: con `draft` fuera de `ConversationPane`, una pulsación de tecla deja...",
+      "label": "WebSocketFrame: decode masked client frames (text, binary, close, ping, pong; 7 / 16 / 64-bit lengths; cont…",
       "status": "done"
     },
     {
       "id": "B5",
-      "label": "Separar por vista, siguiendo el patrón que ya establecen `Permissions/`, `Transcript/` y `Markdown/`:...",
+      "label": "PairingCode: 6 digits from SystemRandomNumberGenerator, leading zeros preserved, constant-time compare, Cus…",
+      "status": "done"
+    },
+    {
+      "id": "B6",
+      "label": "Tests for B1–B5: split-chunk parsing, header case, the RFC 6455 example key, masking round-trip, fragmentat…",
       "status": "done"
     },
     {
       "id": "C1",
-      "label": "Tres niveles de elevación con nombre (canvas / raised / floating) sobre materiales nativos de macOS 26, en...",
+      "label": "BridgeServer actor: NWListener on the port, accept loop, per-connection task. A connection starts in HTTP m…",
       "status": "done"
     },
     {
       "id": "C2",
-      "label": "Cada superficie declara su nivel: composer y caja de compose → raised; tarjeta de permiso y popover de uso...",
+      "label": "ClientChannel: one WS client. Bounded queue (256 frames), 30s ping, close on overflow with 1013, close on p…",
       "status": "done"
     },
     {
       "id": "C3",
-      "label": "Fallback bajo `accessibilityReduceTransparency`: rellenos sólidos que preservan el mismo contraste y la...",
+      "label": "EventHub actor: subscribe by session id or globally, publish to matching channels, drop a channel that clos…",
       "status": "done"
     },
     {
       "id": "C4",
-      "label": "`PreviewData` cubre los tres niveles a la vez en una sola pantalla, para poder juzgar la separación",
+      "label": "Start/stop is idempotent; stop closes every channel and releases the port. Two starts do not leak a listene…",
+      "status": "done"
+    },
+    {
+      "id": "C5",
+      "label": "Tests: a real listener on port 0 (an ephemeral port, so the suite never collides with a running Zero), a ra…",
       "status": "done"
     },
     {
       "id": "D1",
-      "label": "Medir candidatos ámbar contra `ink` y contra `paper`, elegir, y **documentar el ratio**. Sin este número...",
+      "label": "BridgeHost protocol: the eight operations, async, DTOs in and out, Sendable. No AppKit, no AppModel — ZeroB…",
       "status": "done"
     },
     {
       "id": "D2",
-      "label": "`Theme.accent`, aplicado **sólo** en dos lugares: `StateDot` cuando `awaiting` es true, y la superficie de...",
+      "label": "BridgeRouter: pairing check first (FR-4), then method + path, then the handler. Unknown path → 404. Every e…",
       "status": "done"
     },
     {
       "id": "D3",
-      "label": "Verificar la redundancia de FR-9: `StateDot` conserva su anillo y la superficie de permiso su forma, así...",
+      "label": "The eight HTTP endpoints (FR-7 to FR-17) against the protocol.",
       "status": "done"
     },
     {
       "id": "D4",
-      "label": "Extender `Scripts/lint-design-tokens.sh`: `Theme.accent` referenciado en exactamente dos archivos",
+      "label": "WebSocket routing: /api/events and /api/sessions/:id/events, pairing by query parameter, snapshot-first on…",
       "status": "done"
     },
     {
       "id": "D5",
-      "label": "Actualizar la sección \"Palette\" de DESIGN.md: deja de decir \"There is no third color\" y pasa a describir...",
+      "label": "Tests with a fake BridgeHost: every endpoint, every error status, a wrong pair on both transports, 422 carr…",
       "status": "done"
     },
     {
       "id": "E1",
-      "label": "Tratamiento de display para los dos anclajes que hoy se leen como formulario: el titular de `ComposeView`...",
+      "label": "SessionCoordinator: one var eventSink: (@MainActor (UUID, AgentEvent) -> Void)?, called after model.apply i…",
       "status": "done"
     },
     {
       "id": "E2",
-      "label": "Helper de `Theme` para la face monoespaciada del sistema con el conjunto estilístico de cero alternativo...",
+      "label": "BridgeHostAdapter (@MainActor): projects and sessions from AppModel, writes into SessionCoordinator. Resolv…",
       "status": "done"
     },
     {
       "id": "E3",
-      "label": "Si el conjunto estilístico no está disponible, **parar y levantarlo** en vez de empaquetar una tipografía...",
+      "label": "State transitions: after each applied event the adapter compares the snapshot's status to what it last publ…",
+      "status": "done"
+    },
+    {
+      "id": "E4",
+      "label": "BridgeController (@Observable): port, pairing code, isListening, client count, and the reachable addresses…",
       "status": "done"
     },
     {
       "id": "F1",
-      "label": "Tipos del diff calculado en `ZeroCore`: línea con marcador, número de línea en cada lado, agrupadas en hunks",
+      "label": "BridgePanel: state, address, pairing code in Theme.code, client count, Start/Stop. Tokens only — no literal…",
       "status": "done"
     },
     {
       "id": "F2",
-      "label": "Diff real por líneas **intercalado**, con `CollectionDifference` de la stdlib",
+      "label": "Reached from a control in SidebarHeader opening a floating popover — the pattern UsageIndicator already est…",
       "status": "done"
     },
     {
       "id": "F3",
-      "label": "Agrupación en hunks: contexto alrededor de cada cambio, tramos largos sin cambios colapsados",
+      "label": "PreviewData.seed() covers both states, so ZeroPreview.app shows the panel off and listening with a code and…",
       "status": "done"
     },
     {
       "id": "F4",
-      "label": "Caso `Write` (sin `oldText`): sigue mostrándose como bloque completo, sin inventar un diff contra nada",
-      "status": "done"
-    },
-    {
-      "id": "F5",
-      "label": "Tests en `Tests/ZeroCoreTests/`: intercalado correcto, números de línea en ambos lados, límites de hunk,...",
-      "status": "done"
-    },
-    {
-      "id": "F6",
-      "label": "`DiffView` renderiza el resultado",
+      "label": "./Scripts/lint-design-tokens.sh green, and the accent still referenced in exactly the two files the lint al…",
       "status": "done"
     },
     {
       "id": "G1",
-      "label": "Espaciado derivado de la adyacencia de tipos en `TranscriptView`, en lugar de la constante `spacing: 18`",
+      "label": "swift build and swift test clean; the new suite passes; no existing test regressed.",
       "status": "done"
     },
     {
       "id": "G2",
-      "label": "Tool calls consecutivas agrupadas en una corrida expandible (\"Read 4 files\")",
-      "status": "done"
+      "label": "./Scripts/make-app.sh && open build/Zero.app — the panel appears, the bridge binds, curl with the code gets…",
+      "status": "done",
+      "ext": {
+        "incu": {
+          "verifiedAt": "2026-08-25T16:02:46Z",
+          "how": "real build/Zero.app, bridge started from the panel by the user; 12 HTTP/pairing/routing cases, RFC 6455 handshake, snapshot-first, two clients on one session"
+        }
+      }
     },
     {
       "id": "G3",
-      "label": "La corrida **se auto-expande cuando la búsqueda coincide dentro** (Open question 3), para no regresionar...",
-      "status": "done"
+      "label": "Security scans — WAIVED by the user 2026-08-24 (Snyk SAST/SCA, SonarQube); recorded in TESTING.md, not reported clean",
+      "status": "done",
+      "ext": {
+        "incu": {
+          "waived": true,
+          "waivedBy": "user",
+          "waivedAt": "2026-08-25T01:38:57Z",
+          "scans": [
+            "snyk-sast",
+            "snyk-sca",
+            "sonarqube"
+          ]
+        }
+      }
     },
     {
       "id": "G4",
-      "label": "`ToolCallCell.statusText` y la duración dejan de ser palabras crudas y milisegundos crudos (FR-19)",
+      "label": "TESTING.md: how to turn the bridge on, the curl transcript for every endpoint, the macOS local-network prom…",
       "status": "done"
-    },
-    {
-      "id": "G5",
-      "label": "Etiquetas de accesibilidad para la corrida colapsada y expandida: hoy `ToolCallCell` ya tiene la suya y no...",
-      "status": "done"
-    },
-    {
-      "id": "H1",
-      "label": "Condicionar a `accessibilityReduceMotion` las **cinco** animaciones que ya existen...",
-      "status": "done"
-    },
-    {
-      "id": "H2",
-      "label": "Las cuatro nuevas de FR-20: fade por chunk del texto en streaming; transición de forma del tool call...",
-      "status": "done"
-    },
-    {
-      "id": "H3",
-      "label": "Verificar que las nueve colapsan a estático o instantáneo con movimiento reducido activado",
-      "status": "done"
-    },
-    {
-      "id": "I1",
-      "label": "`@ScaledMetric` en los cinco frames fijos: botón circular (`26x26` + `.system(size: 12)`), anillo...",
-      "status": "done"
-    },
-    {
-      "id": "I2",
-      "label": "Atajo de teclado para las pills de `PermissionModeControl`, hoy sólo alcanzables con el ratón, mientras...",
-      "status": "done"
-    },
-    {
-      "id": "I3",
-      "label": "Pasada de VoiceOver sobre lo nuevo: niveles de elevación, acento, corrida de tool calls, hunks del diff",
-      "status": "done"
-    },
-    {
-      "id": "J1",
-      "label": "DESIGN.md al día: la sección \"Palette\" con el acento y su ratio (viene de D5), \"Typography and shape\"...",
-      "status": "done"
-    },
-    {
-      "id": "J2",
-      "label": "`PreviewData.seed()` cubre cada estado nuevo, **siempre a través de `Transcript.apply`**, nunca...",
-      "status": "done"
-    },
-    {
-      "id": "J3",
-      "label": "Matriz de verificación manual en `ZeroPreview.app`: tema claro × tema oscuro × movimiento reducido ×...",
-      "status": "in-progress"
-    },
-    {
-      "id": "J4",
-      "label": "Escaneos de seguridad antes del gate 3: Snyk SAST, Snyk SCA y SonarQube",
-      "status": "blocked"
     }
-  ]
+  ],
+  "ext": {
+    "incu": {
+      "consumer": "Projects/zero-app @ feat/001-zero-app-poc",
+      "note": "This PRD owns the wire contract; zero-app/docs/prds/001-zero-app-poc consumes it."
+    }
+  }
 }
