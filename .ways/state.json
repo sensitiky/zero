@@ -1,248 +1,119 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-25T16:02:46Z",
-  "flow": "feature",
+  "updatedAt": "2026-08-25T17:53:21Z",
+  "flow": "bug",
   "way": "incu/dev",
   "wayVersion": "",
   "discipline": "development",
-  "slug": "005-mobile-remote-bridge",
-  "branch": "feat/005-mobile-remote-bridge",
+  "slug": "004-composer-input-lag",
+  "branch": "fix/004-composer-input-lag",
   "worktree": "",
   "isolationType": "branch",
-  "title": "Mobile Remote Bridge — local HTTP + WebSocket API over the running Zero runtime",
+  "title": "Composer goes laggy and shows the wait cursor with a large draft",
   "ticket": null,
-  "lastPhase": "implementation",
-  "phase": "validation",
+  "lastPhase": "fix-plan",
+  "phase": "implementation",
   "documents": [
     {
-      "name": "PRD.md",
-      "path": "docs/prds/005-mobile-remote-bridge/PRD.md",
+      "name": "BUG.md",
+      "path": "docs/bugs/004-composer-input-lag/BUG.md",
       "status": "approved"
     },
     {
-      "name": "CONTRACT.md",
-      "path": "docs/prds/005-mobile-remote-bridge/CONTRACT.md",
+      "name": "ANALYSIS.md",
+      "path": "docs/bugs/004-composer-input-lag/ANALYSIS.md",
       "status": "approved"
     },
     {
-      "name": "PLAN.md",
-      "path": "docs/prds/005-mobile-remote-bridge/PLAN.md",
+      "name": "FIX_PLAN.md",
+      "path": "docs/bugs/004-composer-input-lag/FIX_PLAN.md",
       "status": "approved"
-    },
-    {
-      "name": "TESTING.md",
-      "path": "docs/prds/005-mobile-remote-bridge/TESTING.md",
-      "status": "draft"
     }
   ],
   "gates": [
     {
-      "id": "prd",
-      "label": "PRD review",
+      "id": "fix-plan",
+      "label": "Fix plan review",
       "status": "passed",
-      "at": "2026-08-24T20:54:37Z"
+      "at": "2026-08-25T16:45:11Z"
     },
     {
-      "id": "plan",
-      "label": "Plan review",
-      "status": "passed",
-      "at": "2026-08-24T20:58:45Z"
-    },
-    {
-      "id": "testing",
-      "label": "User testing",
-      "status": "pending",
-      "at": null
-    },
-    {
-      "id": "pr-develop",
-      "label": "PR feat→develop",
-      "status": "pending",
-      "at": null
-    },
-    {
-      "id": "pr-main",
-      "label": "PR develop→main",
+      "id": "pr",
+      "label": "PR fix→develop",
       "status": "pending",
       "at": null
     }
   ],
   "steps": [
     {
-      "id": "A1",
-      "label": "Package.swift: ZeroBridge target (swiftLanguageMode(.v6), depends on ZeroCore), ZeroBridgeTests test target…",
+      "id": "S0",
+      "label": "Spike in Zero.app: hardcode a definite .frame(height:) on the field and sample — does a definite height remove the CoreText path at all?",
       "status": "done"
     },
     {
-      "id": "A2",
-      "label": "API/DTO/: every type in CONTRACT.md as a Codable, Sendable value type — ProjectDTO, SessionSummaryDTO, Sess…",
+      "id": "S1",
+      "label": "ZeroCore: heightDeterminingPrefix(of:maxLines:) pure function + ZeroCoreTests (reproduction test, option A)",
       "status": "done"
     },
     {
-      "id": "A3",
-      "label": "API/Projection.swift: SessionState → status (FR-11, total, no default: — the compiler must fail when a sixt…",
+      "id": "S2",
+      "label": "Composer.swift: definite height computed from the bounded prefix",
       "status": "done"
     },
     {
-      "id": "A4",
-      "label": "affectedEntry(in:for:) — pure: given [Transcript.Entry] and an AgentEvent, the entry that event touched (la…",
+      "id": "S3",
+      "label": "Measure rung 1 in Zero.app at 50k chars — DONE: 77%->51% busy, insufficient (<30% required); remaining cost is the WIDTH query, 765/1007 display-cycle samples",
       "status": "done"
     },
     {
-      "id": "A5",
-      "label": "AgentEvent + affected entry → BridgeEvent? (FR-22/23), including the events that produce nothing on the wir…",
+      "id": "S4",
+      "label": "Rung 2 DROPPED — NSHostingView.minSize() is the hosting view own query, not ZeroApp.swift:32; confirmed in the real profile, ZeroApp out of scope",
       "status": "done"
     },
     {
-      "id": "A6",
-      "label": "Tests: every SessionState maps, every Transcript.Entry case encodes, every AgentEvent case either maps or i…",
+      "id": "S4a",
+      "label": "Probe rung 3a (.frame(width:height:)): 16->3 sizeThatFits calls but still O(draft) — REJECTED, moves the cliff",
       "status": "done"
     },
     {
-      "id": "B1",
-      "label": "HTTPRequest + HTTPRequestParser: incremental, fed arbitrary chunk boundaries. Request line, headers (case-i…",
+      "id": "S4b",
+      "label": "Probe rung 3b (TextEditor): worse where measurable, text never arrived where flat — REJECTED",
       "status": "done"
     },
     {
-      "id": "B2",
-      "label": "HTTPResponse: status, headers, body, serialization. JSON content type by default.",
+      "id": "S4c",
+      "label": "Implement rung 3c: ComposerTextView (NSViewRepresentable over NSTextView), O(1) sizeThatFits from the bounded prefix + memo",
       "status": "done"
     },
     {
-      "id": "B3",
-      "label": "WebSocketHandshake: detect the upgrade, compute Sec-WebSocket-Accept (CryptoKit.Insecure.SHA1 + base64), bu…",
+      "id": "S4c1",
+      "label": "Crash fix: SwiftUI probes the flexible child with an infinite width and Int(.infinity) trapped in sizeThatFits — the width clamp moved into ComposerMetrics.charactersPerLine(forWidth:) with a test; the unbounded probe now answers without measuring",
       "status": "done"
     },
     {
-      "id": "B4",
-      "label": "WebSocketFrame: decode masked client frames (text, binary, close, ping, pong; 7 / 16 / 64-bit lengths; cont…",
-      "status": "done"
+      "id": "S4d",
+      "label": "Measure rung 3c in Zero.app at 50k chars — acceptance: <30% busy, no cellSizeForBounds: on the display-cycle path",
+      "status": "todo"
     },
     {
-      "id": "B5",
-      "label": "PairingCode: 6 digits from SystemRandomNumberGenerator, leading zeros preserved, constant-time compare, Cus…",
-      "status": "done"
+      "id": "S5",
+      "label": "Validation: swift build OK, swift test 377 OK, lint-design-tokens OK, make-app OK — still to check by hand: growth 1->10 lines, placeholder, Return/Shift-Return, focus ring, autofocus, VoiceOver label",
+      "status": "in-progress"
     },
     {
-      "id": "B6",
-      "label": "Tests for B1–B5: split-chunk parsing, header case, the RFC 6455 example key, masking round-trip, fragmentat…",
-      "status": "done"
+      "id": "S6",
+      "label": "BUG.md status -> Fixed",
+      "status": "todo"
     },
     {
-      "id": "C1",
-      "label": "BridgeServer actor: NWListener on the port, accept loop, per-connection task. A connection starts in HTTP m…",
-      "status": "done"
-    },
-    {
-      "id": "C2",
-      "label": "ClientChannel: one WS client. Bounded queue (256 frames), 30s ping, close on overflow with 1013, close on p…",
-      "status": "done"
-    },
-    {
-      "id": "C3",
-      "label": "EventHub actor: subscribe by session id or globally, publish to matching channels, drop a channel that clos…",
-      "status": "done"
-    },
-    {
-      "id": "C4",
-      "label": "Start/stop is idempotent; stop closes every channel and releases the port. Two starts do not leak a listene…",
-      "status": "done"
-    },
-    {
-      "id": "C5",
-      "label": "Tests: a real listener on port 0 (an ephemeral port, so the suite never collides with a running Zero), a ra…",
-      "status": "done"
-    },
-    {
-      "id": "D1",
-      "label": "BridgeHost protocol: the eight operations, async, DTOs in and out, Sendable. No AppKit, no AppModel — ZeroB…",
-      "status": "done"
-    },
-    {
-      "id": "D2",
-      "label": "BridgeRouter: pairing check first (FR-4), then method + path, then the handler. Unknown path → 404. Every e…",
-      "status": "done"
-    },
-    {
-      "id": "D3",
-      "label": "The eight HTTP endpoints (FR-7 to FR-17) against the protocol.",
-      "status": "done"
-    },
-    {
-      "id": "D4",
-      "label": "WebSocket routing: /api/events and /api/sessions/:id/events, pairing by query parameter, snapshot-first on…",
-      "status": "done"
-    },
-    {
-      "id": "D5",
-      "label": "Tests with a fake BridgeHost: every endpoint, every error status, a wrong pair on both transports, 422 carr…",
-      "status": "done"
-    },
-    {
-      "id": "E1",
-      "label": "SessionCoordinator: one var eventSink: (@MainActor (UUID, AgentEvent) -> Void)?, called after model.apply i…",
-      "status": "done"
-    },
-    {
-      "id": "E2",
-      "label": "BridgeHostAdapter (@MainActor): projects and sessions from AppModel, writes into SessionCoordinator. Resolv…",
-      "status": "done"
-    },
-    {
-      "id": "E3",
-      "label": "State transitions: after each applied event the adapter compares the snapshot's status to what it last publ…",
-      "status": "done"
-    },
-    {
-      "id": "E4",
-      "label": "BridgeController (@Observable): port, pairing code, isListening, client count, and the reachable addresses…",
-      "status": "done"
-    },
-    {
-      "id": "F1",
-      "label": "BridgePanel: state, address, pairing code in Theme.code, client count, Start/Stop. Tokens only — no literal…",
-      "status": "done"
-    },
-    {
-      "id": "F2",
-      "label": "Reached from a control in SidebarHeader opening a floating popover — the pattern UsageIndicator already est…",
-      "status": "done"
-    },
-    {
-      "id": "F3",
-      "label": "PreviewData.seed() covers both states, so ZeroPreview.app shows the panel off and listening with a code and…",
-      "status": "done"
-    },
-    {
-      "id": "F4",
-      "label": "./Scripts/lint-design-tokens.sh green, and the accent still referenced in exactly the two files the lint al…",
-      "status": "done"
-    },
-    {
-      "id": "G1",
-      "label": "swift build and swift test clean; the new suite passes; no existing test regressed.",
-      "status": "done"
-    },
-    {
-      "id": "G2",
-      "label": "./Scripts/make-app.sh && open build/Zero.app — the panel appears, the bridge binds, curl with the code gets…",
-      "status": "done",
-      "ext": {
-        "incu": {
-          "verifiedAt": "2026-08-25T16:02:46Z",
-          "how": "real build/Zero.app, bridge started from the panel by the user; 12 HTTP/pairing/routing cases, RFC 6455 handshake, snapshot-first, two clients on one session"
-        }
-      }
-    },
-    {
-      "id": "G3",
-      "label": "Security scans — WAIVED by the user 2026-08-24 (Snyk SAST/SCA, SonarQube); recorded in TESTING.md, not reported clean",
+      "id": "S7",
+      "label": "Security scans WAIVED by the user 2026-08-25 — recorded, not reported clean",
       "status": "done",
       "ext": {
         "incu": {
           "waived": true,
           "waivedBy": "user",
-          "waivedAt": "2026-08-25T01:38:57Z",
+          "waivedAt": "2026-08-25T16:45:11Z",
           "scans": [
             "snyk-sast",
             "snyk-sca",
@@ -250,17 +121,6 @@
           ]
         }
       }
-    },
-    {
-      "id": "G4",
-      "label": "TESTING.md: how to turn the bridge on, the curl transcript for every endpoint, the macOS local-network prom…",
-      "status": "done"
     }
-  ],
-  "ext": {
-    "incu": {
-      "consumer": "Projects/zero-app @ feat/001-zero-app-poc",
-      "note": "This PRD owns the wire contract; zero-app/docs/prds/001-zero-app-poc consumes it."
-    }
-  }
+  ]
 }
