@@ -27,18 +27,35 @@ struct Composer<Trailing: View>: View {
     @ViewBuilder let trailing: (_ submit: @escaping () -> Void, _ enabled: Bool) -> Trailing
 
     @Environment(\.colorScheme) private var scheme
-    @FocusState private var focused: Bool
+    /// Plain state rather than `@FocusState`: focus now comes from the text view's responder
+    /// transitions, because `ComposerTextView` is an AppKit view and SwiftUI's focus system does not
+    /// reach into one.
+    @State private var focused = false
     @State private var draft = ""
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            TextField(placeholder, text: $draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.body)
-                .lineLimit(1...10)
-                .focused($focused)
-                .accessibilityLabel(fieldLabel)
-                .onSubmit(submit)
+            // Not a `TextField`: a field reports a size that depends on the whole draft, and the
+            // stack around it asks for that size several times per display cycle. See
+            // docs/bugs/004-composer-input-lag and the note on `ComposerTextView`.
+            ComposerTextView(
+                text: $draft,
+                maxLines: ComposerMetrics.maxLines,
+                autofocus: autofocus,
+                accessibilityLabel: fieldLabel,
+                onSubmit: submit,
+                onFocusChange: { focused = $0 }
+            )
+            // An `NSTextView` has no placeholder, and an overlay does not feed its size back into
+            // the layout, so the cheap answer above stays cheap.
+            .overlay(alignment: .topLeading) {
+                if draft.isEmpty {
+                    Text(placeholder)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .allowsHitTesting(false)
+                }
+            }
 
             // Usage sits immediately left of the send control — the two things that live at the end
             // of every message: what it costs, and the button that sends it.
@@ -56,7 +73,6 @@ struct Composer<Trailing: View>: View {
             stroke: focused ? Theme.Stroke.focus : Theme.Stroke.hairline
         )
         .zeroAnimation(Theme.Motion.feedback, value: focused)
-        .onAppear { if autofocus { focused = true } }
     }
 
     private var isReady: Bool {
