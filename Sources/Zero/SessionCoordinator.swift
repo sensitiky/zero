@@ -25,6 +25,33 @@ final class SessionCoordinator {
 
     var lastError: String?
 
+    /// What the coordinator has just done, for anything watching from outside the window.
+    ///
+    /// Three of the four cases are not `AgentEvent`s and never could be: a session being created, a
+    /// user message being recorded and a permission being answered are things *this* type does, not
+    /// things a provider reported. They travel on the same channel as the agent's own events so
+    /// that a subscriber sees them in the order they happened — which, for a transcript, is the
+    /// difference between right and wrong.
+    enum Publication: Sendable {
+        /// A session now exists, with its opening prompt already in the transcript.
+        case created
+        /// One normalized provider event, already applied to the model.
+        case agent(AgentEvent)
+        /// The user's message is in the transcript; it is the last entry.
+        case userMessage
+        /// The pending request with this id has been answered by a human.
+        case permissionResolved(String)
+    }
+
+    /// The one hook the bridge needs (FR-24).
+    ///
+    /// Nil by default and nil whenever the bridge is off, so every publish point below is a no-op
+    /// and the app behaves exactly as it did before this existed. It is deliberately *one*
+    /// subscription to the same normalized events the window renders: a second subscription to
+    /// `SessionRuntime.transcript` would be a second transcript that drifts, and diffing `AppModel`
+    /// would be `Transcript`'s assembly rules reimplemented in the transport layer.
+    var eventSink: (@MainActor (UUID, Publication) -> Void)?
+
     /// Which checkout each in-place session holds, so a second one cannot join it.
     private var occupiedCheckouts: [URL: UUID] = [:]
 
@@ -152,6 +179,7 @@ final class SessionCoordinator {
             model.appendUserMessage(prompt, to: id)
             if workspace == .currentCheckout { occupiedCheckouts[repository] = id }
             model.selection = .session(id)
+            eventSink?(id, .created)
             pump(runtime, id: id)
         } catch let error as SessionRuntime.CreationError {
             lastError = error.description
@@ -182,6 +210,9 @@ final class SessionCoordinator {
                     continue
                 }
                 self.model.apply(event, to: id)
+                // After `apply`, never before: a subscriber reads the entry the event landed on out
+                // of the transcript, so the transcript has to have it.
+                self.eventSink?(id, .agent(event))
             }
         }
     }
@@ -212,6 +243,7 @@ final class SessionCoordinator {
         // Shown before the write is attempted, so the message never appears to vanish. If the send
         // fails the error says so, which is better than a message that was silently never recorded.
         model.appendUserMessage(text, to: id)
+        eventSink?(id, .userMessage)
         do {
             try await runtime.send(text)
         } catch {
@@ -235,6 +267,8 @@ final class SessionCoordinator {
     /// request has no such entry because it never went through the broker, so the answer is
     /// encoded and sent back in-band instead, via `SessionRuntime.resolvePermission`.
     func answerPermission(sessionID: UUID, option: PermissionOption) {
+        // Read before resolving: afterwards there is no pending request to take the id from.
+        let requestID = model.sessions.first { $0.id == sessionID }?.pendingPermission?.id
         let allowed = option.kind == .allowOnce || option.kind == .allowAlways
         if let resolve = pendingResolvers.removeValue(forKey: sessionID) {
             resolve(PermissionBroker.Resolution(decision: allowed ? .allow : .deny, origin: .userAction))
@@ -249,6 +283,7 @@ final class SessionCoordinator {
             }
         }
         model.resolvePermission(sessionID: sessionID)
+        if let requestID { eventSink?(sessionID, .permissionResolved(requestID)) }
     }
 
     // MARK: - Permission mode

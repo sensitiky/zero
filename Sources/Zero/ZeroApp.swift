@@ -5,6 +5,9 @@ import ZeroCore
 struct ZeroApp: App {
     @State private var model = AppModel()
     @State private var coordinator: SessionCoordinator
+    /// Off at launch, always (FR-2). Owned here because it outlives any one view, and reached
+    /// through the environment because exactly one view needs it.
+    @State private var bridge: BridgeController
 
     init() {
         let model = AppModel()
@@ -15,14 +18,19 @@ struct ZeroApp: App {
             // looked at without a real agent or repository.
             PreviewData.seed(into: model)
         }
+        let coordinator = SessionCoordinator(model: model)
+        let bridge = BridgeController(model: model, coordinator: coordinator)
+        if PreviewData.isEnabled { PreviewData.seed(into: bridge) }
         _model = State(initialValue: model)
-        _coordinator = State(initialValue: SessionCoordinator(model: model))
+        _coordinator = State(initialValue: coordinator)
+        _bridge = State(initialValue: bridge)
     }
 
     var body: some Scene {
         WindowGroup {
             RootView(model: model, coordinator: coordinator)
                 .frame(minWidth: 900, minHeight: 560)
+                .environment(bridge)
         }
         .windowStyle(.hiddenTitleBar)
         .commands { ZeroCommands(model: model, coordinator: coordinator) }

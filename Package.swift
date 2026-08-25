@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS("26.0")],
     products: [
         .library(name: "ZeroCore", targets: ["ZeroCore"]),
+        .library(name: "ZeroBridge", targets: ["ZeroBridge"]),
         .executable(name: "Zero", targets: ["Zero"]),
         .executable(name: "zero-probe", targets: ["zero-probe"]),
         .executable(name: "zero-permission-hook", targets: ["zero-permission-hook"]),
@@ -16,9 +17,14 @@ let package = Package(
             resources: [.copy("Resources/pricing.json")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
+        .target(
+            name: "ZeroBridge",
+            dependencies: ["ZeroCore"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
         .executableTarget(
             name: "Zero",
-            dependencies: ["ZeroCore"],
+            dependencies: ["ZeroCore", "ZeroBridge"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(
@@ -29,6 +35,11 @@ let package = Package(
         .executableTarget(
             name: "zero-permission-hook",
             dependencies: ["ZeroCore"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "ZeroBridgeTests",
+            dependencies: ["ZeroBridge", "ZeroCore"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(

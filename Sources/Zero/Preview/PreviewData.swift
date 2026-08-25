@@ -16,6 +16,15 @@ enum PreviewData {
         ProcessInfo.processInfo.environment["ZERO_PREVIEW"] == "1"
     }
 
+    /// The bridge panel, in its listening state (FR-28).
+    ///
+    /// Both states are covered by one build: the preview opens listening — an address, a pairing
+    /// code and a connected device — and the panel's own Stop button shows the off state, which is
+    /// real rather than seeded because stopping a bridge that never bound anything is a no-op.
+    static func seed(into bridge: BridgeController) {
+        bridge.seedPreviewState()
+    }
+
     static func seed(into model: AppModel) {
         let repo = URL(fileURLWithPath: "/Users/mariocorrea/Documents/Projects/millon-core")
         let apiRepo = URL(fileURLWithPath: "/Users/mariocorrea/Documents/Projects/millon-api")
