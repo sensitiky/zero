@@ -29,4 +29,22 @@ public enum SessionState: Sendable, Equatable {
         case .finished, .error: return false
         }
     }
+
+    /// Reconstructs a state from `Session.state`/`Session.errorMessage`, the way
+    /// `PermissionMode.init(persisted:)` reconstructs a mode.
+    ///
+    /// Never `.running` or `.waitingPermission`: those describe a live process, and whatever
+    /// process this session had is gone the moment the app that held its `Process` handle quits
+    /// — there is nothing to persist "was reconnected" as. Restoring either verbatim would show a
+    /// spinner, or an Allow/Deny control, that nothing will ever resolve. Both collapse to
+    /// `.idle`, exactly what a freshly reopened session with history and nothing running looks
+    /// like. An unrecognized string collapses to `.idle` too, rather than crashing on a row this
+    /// type doesn't recognize.
+    public init(persisted: String, errorMessage: String?) {
+        switch persisted {
+        case "error": self = .error(errorMessage ?? "")
+        case "finished": self = .finished
+        default: self = .idle
+        }
+    }
 }

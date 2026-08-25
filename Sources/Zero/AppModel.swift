@@ -40,6 +40,12 @@ final class AppModel {
         var model: String
         var branch: String
         var workspace: SessionRuntime.Workspace
+        /// Where the agent actually works — the checkout itself for `.currentCheckout`, a
+        /// separate folder for `.isolatedWorktree`. Kept so a restored session (or a live one
+        /// whose folder was moved/deleted from under it) can tell whether that folder still
+        /// exists, without threading a second lookup through `Store` every time the sidebar
+        /// renders.
+        var worktreePath: String
         var state: SessionState
         /// The conversation. Assembly lives in `ZeroCore.Transcript`, where it can be tested.
         var transcript = Transcript()
@@ -57,11 +63,23 @@ final class AppModel {
         var summary: String {
             transcript.summary.isEmpty ? Transcript.condensed(initialPrompt) : transcript.summary
         }
+
+        /// Whether `worktreePath` still resolves on disk — the case this exists for is a
+        /// restored session whose folder was moved, deleted, or is on an unmounted volume since
+        /// Zero last quit.
+        var folderMissing: Bool {
+            !FileManager.default.fileExists(atPath: worktreePath)
+        }
     }
 
     var projects: [Project] = []
     var sessions: [SessionSnapshot] = []
-    var selection: Selection?
+    /// Persisted on every change (`LastSelection`), so it can be restored on the next launch.
+    /// Restore itself sets this directly (`SessionCoordinator.restoreFromStore`) — that write
+    /// persists too, but to the same value it just read, so it's a harmless no-op, not a loop.
+    var selection: Selection? {
+        didSet { LastSelection.save(selection) }
+    }
     // Deliberately absent: the composer's text.
     //
     // It used to live here, and every keystroke invalidated everything observing this model — the

@@ -13,7 +13,7 @@ struct SidebarHeader: View {
         VStack(spacing: 8) {
             HStack(spacing: 6) {
                 Button {
-                    if let url = coordinator.chooseRepository() { model.addProject(url) }
+                    if let url = coordinator.chooseRepository() { coordinator.addProject(url) }
                 } label: {
                     Image(systemName: "folder.badge.plus")
                 }

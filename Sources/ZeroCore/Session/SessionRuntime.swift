@@ -205,7 +205,9 @@ public actor SessionRuntime {
 
     /// What a session's branch reads as when there is no branch to name — no repository, no commit
     /// yet, or a detached `HEAD`. Same em dash `SessionCoordinator` already falls back to.
-    private static let unknownBranchLabel = "—"
+    /// Also used by `SessionCoordinator.addProject`, hence `public`: a project added before any
+    /// session exists in it needs the same placeholder this type already uses when git can't say.
+    public static let unknownBranchLabel = "—"
 
     /// Creates a new session, checks the repository, creates a worktree, and starts the process.
     ///
@@ -312,11 +314,28 @@ public actor SessionRuntime {
             throw CreationError.processError(String(describing: error))
         }
 
+        // `gitService?.resolveBaseBranch()` regardless of `workspace`: for `.isolatedWorktree`,
+        // `branchName` at this point is the *new* branch the worktree was just created on, not the
+        // repository's default branch — the wrong value for `Repository.defaultBranch`. No git (or
+        // no default branch resolvable) falls back to the same unknown label a branchless in-place
+        // session already uses.
+        let repositoryDefaultBranch: String
+        if config.workspace == .currentCheckout {
+            repositoryDefaultBranch = branchName
+        } else {
+            repositoryDefaultBranch = (try? await gitService?.resolveBaseBranch()) ?? Self.unknownBranchLabel
+        }
+
         // Persisted under the same id the hook socket was opened for.
         try await MainActor.run {
+            let repository = try store.upsertRepository(
+                path: config.repository.path,
+                name: config.repository.lastPathComponent,
+                defaultBranch: repositoryDefaultBranch
+            )
             let session = try store.createSession(
                 id: sessionID,
-                repository: nil,  // repository relationship optional for now
+                repository: repository,
                 provider: config.provider.id,
                 model: config.model,
                 worktreePath: worktreePath.path,
@@ -325,6 +344,11 @@ public actor SessionRuntime {
                 permissionMode: config.permissionMode.rawValue
             )
             try store.markSessionStarted(session)
+            // The opening request is the first thing said; a restored transcript that starts with
+            // the reply reads as if the question was lost. Same `role: "user"` `appendMessage`
+            // every later turn's message uses (see `SessionCoordinator.send`).
+            _ = try store.appendMessage(to: session, role: "user", content: config.prompt)
+            try store.flush()
         }
 
         // Create the runtime with only the session ID
@@ -833,7 +857,15 @@ public actor SessionRuntime {
                     pendingMessage = nil
                     pendingToolCalls.removeAll()
 
-                case .plan, .unrecognized, .failed:
+                case .plan(let items):
+                    // The agent reports the full list each time, never a delta — one snapshot row
+                    // per update, same shape `UsageRecord` already uses.
+                    if let data = try? JSONEncoder().encode(items),
+                       let json = String(data: data, encoding: .utf8) {
+                        _ = try? store.appendPlanSnapshot(to: session, itemsJSON: json)
+                    }
+
+                case .unrecognized, .failed:
                     break
                 }
             }

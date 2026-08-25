@@ -102,6 +102,64 @@ final class SessionCoordinator {
         }
     }
 
+    // MARK: - Restoring on launch
+
+    /// Populates `model.projects`/`model.sessions` from the store, and restores the last
+    /// selection if it still resolves against what came back. Called once, synchronously, from
+    /// `ZeroApp.init` — not deferred to `.onAppear`, which would race the first frame rendering
+    /// an empty sidebar. Nothing here starts a process: a restored session reconnects only when
+    /// opened (`openSession`), never all at once here (PRD FR-4/FR-6/FR-7).
+    func restoreFromStore() {
+        guard let store = try? currentStore() else { return }
+
+        guard let repositories = try? store.listRepositories() else { return }
+        model.projects = repositories.map { AppModel.Project(url: URL(fileURLWithPath: $0.path)) }
+
+        guard let persistedSessions = try? store.listSessions() else { return }
+        model.sessions = persistedSessions
+            // Oldest first: a live session is always appended to the end of `model.sessions`, and
+            // the sidebar renders that array in place with no sort of its own — restoring in
+            // `listSessions()`'s newest-first order would show every project's sessions backwards.
+            .sorted { $0.createdAt < $1.createdAt }
+            .map { self.snapshot(restoring: $0) }
+
+        if let restored = LastSelection.load(), selectionExists(restored) {
+            model.selection = restored
+        }
+    }
+
+    private func selectionExists(_ selection: AppModel.Selection) -> Bool {
+        switch selection {
+        case .project(let url): return model.projects.contains { $0.id == url }
+        case .session(let id): return model.sessions.contains { $0.id == id }
+        }
+    }
+
+    /// One persisted `Session` row → the snapshot the UI renders.
+    private func snapshot(restoring session: Session) -> AppModel.SessionSnapshot {
+        let projectPath = session.repository?.path ?? session.worktreePath
+        let initialPrompt = session.orderedMessages.first { $0.role == "user" }?.content ?? ""
+        return AppModel.SessionSnapshot(
+            id: session.id,
+            projectID: URL(fileURLWithPath: projectPath),
+            title: Self.title(from: initialPrompt),
+            // Falls back to the persisted id itself if the provider isn't in today's registry
+            // (uninstalled since this session ran) — still readable, just unprettified.
+            provider: descriptor(for: session.provider)?.displayName ?? session.provider,
+            model: session.model,
+            branch: session.branch,
+            // `.currentCheckout` iff the session worked directly in the repository; `workspace`
+            // itself was never persisted (nothing reads it back but the mobile bridge's
+            // projection, and this derivation is exact — see the PRD's design decisions).
+            workspace: session.worktreePath == session.repository?.path ? .currentCheckout : .isolatedWorktree,
+            worktreePath: session.worktreePath,
+            state: SessionState(persisted: session.state, errorMessage: session.errorMessage),
+            transcript: .restoring(session),
+            initialPrompt: initialPrompt,
+            permissionMode: PermissionMode(persisted: session.permissionMode)
+        )
+    }
+
     // MARK: - Starting a session
 
     /// Asks for a folder to work in. A picker rather than a text field: letting someone type a
@@ -114,6 +172,29 @@ final class SessionCoordinator {
         panel.allowsMultipleSelection = false
         panel.prompt = "Choose Repository"
         return panel.runModal() == .OK ? panel.url : nil
+    }
+
+    /// Adds a project: persists (or reuses) its `Repository` row, then reflects it in the model.
+    ///
+    /// Routed through here rather than called directly on `AppModel` — a project with zero
+    /// sessions still needs a durable row to survive a restart, and this is the one place both
+    /// the store and the model are reachable together for that write.
+    ///
+    /// `defaultBranch` is set to `SessionRuntime.unknownBranchLabel`: resolving the real one needs
+    /// an actor hop this plain button action doesn't have. Harmless — nothing reads
+    /// `Repository.defaultBranch` today, restore rebuilds `Project.name` from the URL, not from
+    /// the row. It exists here only so the row is present when a session in this project is
+    /// started later.
+    func addProject(_ url: URL) {
+        if let store = try? currentStore() {
+            _ = try? store.upsertRepository(
+                path: url.path,
+                name: url.lastPathComponent,
+                defaultBranch: SessionRuntime.unknownBranchLabel
+            )
+            try? store.flush()
+        }
+        model.addProject(url)
     }
 
     func startSession(
@@ -156,9 +237,12 @@ final class SessionCoordinator {
             let id = runtime.id
             runtimes[id] = runtime
 
-            // Branch comes from the store rather than the runtime: it is already persisted there,
-            // and asking the actor for it would be an actor hop for a value we own.
-            let branch = (try? store.fetchSession(id: id))?.branch ?? "—"
+            // Branch and worktree path come from the store rather than the runtime: both are
+            // already persisted there, and asking the actor for them would be an actor hop for
+            // values we own.
+            let persisted = try? store.fetchSession(id: id)
+            let branch = persisted?.branch ?? "—"
+            let worktreePath = persisted?.worktreePath ?? repository.path
 
             model.sessions.append(
                 AppModel.SessionSnapshot(
@@ -169,6 +253,7 @@ final class SessionCoordinator {
                     model: modelName,
                     branch: branch,
                     workspace: workspace,
+                    worktreePath: worktreePath,
                     state: .running,
                     initialPrompt: prompt,
                     permissionMode: permissionMode
@@ -244,6 +329,15 @@ final class SessionCoordinator {
         // fails the error says so, which is better than a message that was silently never recorded.
         model.appendUserMessage(text, to: id)
         eventSink?(id, .userMessage)
+        // Persisted here rather than inside the runtime: this is the user's own message, sent from
+        // the main actor before the runtime is even asked to relay it — the same
+        // `role: "user"` `appendMessage` the initial prompt already uses in `SessionRuntime.create`.
+        // A failure here is not fatal to sending: the message is already live on screen, so it is
+        // logged to `lastError` context but does not block the actual send.
+        if let store = try? currentStore(), let session = try? store.fetchSession(id: id) {
+            _ = try? store.appendMessage(to: session, role: "user", content: text)
+            try? store.flush()
+        }
         do {
             try await runtime.send(text)
         } catch {
@@ -318,34 +412,89 @@ final class SessionCoordinator {
             await runtime.terminate()
             runtimes.removeValue(forKey: sessionID)
 
-            let newRuntime = try await SessionRuntime.resume(
+            try await resumeAndPump(
                 sessionID: sessionID,
                 store: store,
-                providerRegistry: registry,
+                session: session,
                 permissionMode: mode,
-                permissionSetup: session.provider == ProviderDescriptor.claude.id
-                    ? .init(broker: broker, helperPath: Self.helperPath())
-                    : nil
+                noResumeNotice: "Switched to \(mode.label), but this provider has no verified "
+                    + "resume — the session ended here; its history stays readable."
             )
-            runtimes[sessionID] = newRuntime
-            if await newRuntime.state == .finished {
-                model.appendNotice(
-                    "Switched to \(mode.label), but this provider has no verified resume — the "
-                        + "session ended here; its history stays readable.",
-                    to: sessionID
-                )
-            }
-            pump(newRuntime, id: sessionID)
         } catch {
             lastError = "Could not relaunch with the new permission mode: \(String(describing: error))"
         }
+    }
+
+    // MARK: - Opening a restored session
+
+    /// Reconnects a session that exists only as restored history — no entry in `runtimes` yet —
+    /// the first time it's opened. Not called at launch for every restored session: that would be
+    /// one subprocess per session ever created, all at once, before the user has looked at any of
+    /// them (PRD FR-7 / the "lazy, on selection" resume-timing decision).
+    ///
+    /// A no-op for a session already live (already in `runtimes`) — opening it again should not
+    /// relaunch a process that's already running.
+    func openSession(_ id: UUID) async {
+        guard runtimes[id] == nil else { return }
+        guard let index = model.sessions.firstIndex(where: { $0.id == id }) else { return }
+        guard !model.sessions[index].folderMissing else {
+            model.appendNotice(
+                "This session's folder can't be found — it may have been moved or deleted. "
+                    + "History is available; sending and resuming are disabled until it's back.",
+                to: id
+            )
+            return
+        }
+        guard let store = try? currentStore(), let session = try? store.fetchSession(id: id) else { return }
+        do {
+            try await resumeAndPump(
+                sessionID: id,
+                store: store,
+                session: session,
+                permissionMode: model.sessions[index].permissionMode,
+                noResumeNotice: "This provider has no verified resume — the session ended before "
+                    + "Zero last quit; its history stays readable."
+            )
+        } catch {
+            lastError = "Could not resume: \(String(describing: error))"
+        }
+    }
+
+    /// The tail both a permission-mode relaunch and opening a restored session share: resume via
+    /// `SessionRuntime.resume`, register it as live, start pumping its events, and note it if the
+    /// provider had no verified resume and the session came back finished rather than live.
+    private func resumeAndPump(
+        sessionID: UUID,
+        store: Store,
+        session: Session,
+        permissionMode: PermissionMode,
+        noResumeNotice: String
+    ) async throws {
+        let broker = try await currentBroker()
+        let runtime = try await SessionRuntime.resume(
+            sessionID: sessionID,
+            store: store,
+            providerRegistry: registry,
+            permissionMode: permissionMode,
+            permissionSetup: session.provider == ProviderDescriptor.claude.id
+                ? .init(broker: broker, helperPath: Self.helperPath())
+                : nil
+        )
+        runtimes[sessionID] = runtime
+        if await runtime.state == .finished {
+            model.appendNotice(noResumeNotice, to: sessionID)
+        }
+        pump(runtime, id: sessionID)
     }
 
     // MARK: - Lazily built dependencies
 
     private func currentStore() throws -> Store {
         if let store { return store }
-        let created = try Store()
+        // The one production call site for the on-disk container — everywhere else that opens a
+        // `Store` (tests, previews) passes `nil`/an in-memory one on purpose. See
+        // `Store.defaultModelContainer`'s doc comment.
+        let created = try Store(modelContainer: Store.defaultModelContainer())
         store = created
         return created
     }

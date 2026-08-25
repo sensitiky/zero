@@ -47,6 +47,20 @@ public struct ToolCall: Sendable, Equatable, Identifiable {
         case succeeded
         case failed(String)
         case denied
+
+        /// Reconstructs a status from `ToolCallRecord.status`/`.statusDetail` — the strings
+        /// `SessionRuntime.persistAndFlush` already writes for exactly these five cases. An
+        /// unrecognized string falls back to `.pending` rather than crashing on a row this type
+        /// doesn't recognize, same rule `SessionState.init(persisted:)` uses.
+        public init(persisted: String, statusDetail: String?) {
+            switch persisted {
+            case "running": self = .running
+            case "succeeded": self = .succeeded
+            case "failed": self = .failed(statusDetail ?? "")
+            case "denied": self = .denied
+            default: self = .pending
+            }
+        }
     }
 
     public var id: String
@@ -92,8 +106,11 @@ public struct FileEdit: Sendable, Equatable {
     }
 }
 
-public struct PlanItem: Sendable, Equatable, Identifiable {
-    public enum Status: String, Sendable, Equatable {
+public struct PlanItem: Sendable, Equatable, Identifiable, Codable {
+    /// `Codable` so a plan snapshot can round-trip through `PlanSnapshotRecord.itemsJSON` as
+    /// plain `JSONEncoder`/`JSONDecoder` — this shape has no reason to hand-roll encoding the way
+    /// `PermissionOption` does (that one exists because `PermissionOption.Kind` predates this).
+    public enum Status: String, Sendable, Equatable, Codable {
         case pending, inProgress, completed
     }
 

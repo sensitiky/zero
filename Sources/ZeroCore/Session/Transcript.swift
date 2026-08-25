@@ -161,4 +161,98 @@ public struct Transcript: Sendable, Equatable {
         usage.contextWindowTotal = reported.contextWindowTotal ?? usage.contextWindowTotal
         usage.costUSD = reported.costUSD ?? usage.costUSD
     }
+
+    // MARK: - Restore
+
+    /// One row this session persisted, tagged with what kind it is — so a single sort can
+    /// interleave `Message`, `ToolCallRecord` and `PlanSnapshotRecord` back into the one flat,
+    /// chronological order a live transcript already keeps them in (see
+    /// `Session.nextEntrySequence`).
+    private enum RestoredRow {
+        case message(Message)
+        case toolCall(ToolCallRecord)
+        case plan(PlanSnapshotRecord)
+
+        var sequenceNumber: Int {
+            switch self {
+            case .message(let message): return message.sequenceNumber
+            case .toolCall(let record): return record.sequenceNumber
+            case .plan(let record): return record.sequenceNumber
+            }
+        }
+    }
+
+    /// Rebuilds a `Transcript` from a session's persisted rows.
+    ///
+    /// Not a replay of `AgentEvent`s through `apply` — there is no live process to have produced
+    /// them, and the store already holds each row in its settled, final form (one row per tool
+    /// call, not a sequence of status updates to fold). This builds `entries` directly instead.
+    ///
+    /// `pendingPermission` is always nil: a permission request has no process left to route an
+    /// answer to across a restart, so it is not resurrected (see the PRD's resolved open
+    /// question). Rows this session never wrote — thinking, relaunch notices — simply don't exist
+    /// to restore; see the PRD's non-goals.
+    public static func restoring(_ session: Session) -> Transcript {
+        let rows: [RestoredRow] =
+            session.orderedMessages.map(RestoredRow.message)
+            + session.orderedToolCalls.map(RestoredRow.toolCall)
+            + session.orderedPlanSnapshots.map(RestoredRow.plan)
+        let ordered = rows.sorted { $0.sequenceNumber < $1.sequenceNumber }
+
+        var transcript = Transcript()
+        for row in ordered {
+            switch row {
+            case .message(let message):
+                // An assistant row with no content exists only to anchor a tool call
+                // (`SessionRuntime.persistAndFlush` creates one when a tool call arrives before
+                // any text does) — it was never its own rendered entry live either.
+                guard !message.content.isEmpty else { continue }
+                if message.role == "user" {
+                    transcript.entries.append(.userText(id: UUID(), text: message.content))
+                } else {
+                    transcript.entries.append(.assistantText(id: UUID(), text: message.content))
+                    transcript.summary = Self.condensed(message.content)
+                }
+
+            case .toolCall(let record):
+                let call = ToolCall(
+                    id: record.id,
+                    name: record.name,
+                    input: record.input,
+                    output: record.output,
+                    status: .init(persisted: record.status, statusDetail: record.statusDetail),
+                    edit: record.editPath.map {
+                        FileEdit(path: $0, oldText: record.editOldText, newText: record.editNewText)
+                    },
+                    startedAt: record.startedAt,
+                    endedAt: record.endedAt
+                )
+                transcript.entries.append(.tool(id: UUID(), call: call))
+
+            case .plan(let record):
+                guard let data = record.itemsJSON.data(using: .utf8),
+                      let items = try? JSONDecoder().decode([PlanItem].self, from: data)
+                else { continue }
+                transcript.entries.append(.plan(id: UUID(), items: items))
+            }
+        }
+
+        for record in session.orderedUsageRecords {
+            transcript.merge(
+                Usage(
+                    model: record.model,
+                    inputTokens: record.inputTokens,
+                    outputTokens: record.outputTokens,
+                    cacheReadTokens: record.cacheReadTokens,
+                    cacheWriteTokens: record.cacheWriteTokens,
+                    contextWindowUsed: record.contextWindowUsed,
+                    contextWindowTotal: record.contextWindowTotal
+                    // thinkingTokens/costUSD: not persisted on UsageRecord — see PRD Known
+                    // limitations. Falls back to nil, same as a provider that never reported one.
+                )
+            )
+        }
+
+        return transcript
+    }
 }

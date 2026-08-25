@@ -1,6 +1,13 @@
 import Foundation
 import SwiftData
 
+/// Reasons a `Store` call can fail beyond what SwiftData itself throws.
+public enum StoreError: Error, Sendable, Equatable {
+    /// A `Message` with no `session` was handed to a call that needs one — every message this
+    /// type creates sets it, so seeing this means a caller built one by hand.
+    case detachedMessage
+}
+
 /// Persistence store for Zero sessions and transcript history.
 ///
 /// ModelContext is not Sendable, so all persistence operations run on @MainActor.
@@ -35,6 +42,19 @@ public final class Store {
     private let container: ModelContainer?
     private let context: ModelContext
 
+    /// The full model list, in one place, so the in-memory (tests) and on-disk (production)
+    /// containers can never drift apart by one of them forgetting a newly added model.
+    public static let schema = Schema([
+        Repository.self,
+        Session.self,
+        Message.self,
+        ToolCallRecord.self,
+        PermissionRequestRecord.self,
+        UsageRecord.self,
+        PricingEntry.self,
+        PlanSnapshotRecord.self,
+    ])
+
     /// Initialize with a ModelContainer.
     /// Pass nil to use an in-memory container (useful for testing).
     public init(modelContainer: ModelContainer? = nil) throws {
@@ -44,21 +64,35 @@ public final class Store {
             self.container = modelContainer
             self.context = modelContainer.mainContext
         } else {
-            // In-memory container for testing
-            let schema = Schema([
-                Repository.self,
-                Session.self,
-                Message.self,
-                ToolCallRecord.self,
-                PermissionRequestRecord.self,
-                UsageRecord.self,
-                PricingEntry.self,
-            ])
+            // In-memory container for testing. Deliberately not the production default — see
+            // `defaultModelContainer(baseDirectory:)` for that — so this meaning never changes
+            // out from under the ~20 call sites (mostly tests) that already rely on it.
             let config = ModelConfiguration(isStoredInMemoryOnly: true)
-            let newContainer = try ModelContainer(for: schema, configurations: [config])
+            let newContainer = try ModelContainer(for: Self.schema, configurations: [config])
             self.container = newContainer
             self.context = newContainer.mainContext
         }
+    }
+
+    /// The on-disk container production uses: `{baseDirectory}/{bundle id}/Zero.store`, created
+    /// if it doesn't exist yet.
+    ///
+    /// Application Support, not `Bundle.main.bundleURL` — the app bundle is replaced whole on
+    /// every update/reinstall via the `.dmg`; Application Support survives that, which is the
+    /// entire point (see `docs/prds/006-persistent-projects-sessions/PRD.md`). `baseDirectory`
+    /// defaults to the real Application Support URL and exists as a parameter only so tests can
+    /// point this at a temp directory instead of the user's real one.
+    public static func defaultModelContainer(
+        baseDirectory: URL = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask
+        )[0]
+    ) throws -> ModelContainer {
+        let bundleID = Bundle.main.bundleIdentifier ?? "the.stool.zero"
+        let directory = baseDirectory.appendingPathComponent(bundleID, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let storeURL = directory.appendingPathComponent("Zero.store")
+        let config = ModelConfiguration(url: storeURL)
+        return try ModelContainer(for: Self.schema, configurations: [config])
     }
 
     // MARK: - Repository
@@ -68,6 +102,26 @@ public final class Store {
         context.insert(repo)
         try context.save()
         return repo
+    }
+
+    /// Finds the repository at `path`, or creates it. A session started twice in the same
+    /// checkout, or a folder re-added as a project, must land on the same row — not a duplicate
+    /// one every time.
+    public func upsertRepository(path: String, name: String, defaultBranch: String) throws -> Repository {
+        let predicate = #Predicate<Repository> { $0.path == path }
+        var descriptor = FetchDescriptor<Repository>(predicate: predicate)
+        descriptor.includePendingChanges = true
+        if let existing = try context.fetch(descriptor).first {
+            return existing
+        }
+        return try createRepository(path: path, name: name, defaultBranch: defaultBranch)
+    }
+
+    public func listRepositories() throws -> [Repository] {
+        let descriptor = FetchDescriptor<Repository>(
+            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+        )
+        return try context.fetch(descriptor)
     }
 
     // MARK: - Session
@@ -147,14 +201,15 @@ public final class Store {
     // MARK: - Message
 
     /// Append a message to a session.
-    /// Assigns the next sequence number automatically.
+    /// Assigns the next entry sequence number automatically — shared with tool calls and plan
+    /// snapshots, so a fetch can interleave all three back into one chronological transcript.
     public func appendMessage(
         to session: Session,
         role: String,
         content: String
     ) throws -> Message {
-        let nextSeq = session.nextMessageSequence
-        session.nextMessageSequence += 1
+        let nextSeq = session.nextEntrySequence
+        session.nextEntrySequence += 1
         let message = Message(
             session: session,
             role: role,
@@ -167,7 +222,8 @@ public final class Store {
 
     // MARK: - ToolCall
 
-    /// Append a tool call to a message.
+    /// Append a tool call to a message. Drawn from the same session-wide counter `appendMessage`
+    /// uses — see its doc comment.
     public func appendToolCall(
         to message: Message,
         id: String,
@@ -175,12 +231,18 @@ public final class Store {
         input: String?,
         status: String = "pending"
     ) throws -> ToolCallRecord {
+        guard let session = message.session else {
+            throw StoreError.detachedMessage
+        }
+        let nextSeq = session.nextEntrySequence
+        session.nextEntrySequence += 1
         let toolCall = ToolCallRecord(
             id: id,
             message: message,
             name: name,
             input: input,
-            status: status
+            status: status,
+            sequenceNumber: nextSeq
         )
         context.insert(toolCall)
         message.toolCalls.append(toolCall)
@@ -223,6 +285,20 @@ public final class Store {
         toolCall.startedAt = startedAt
         toolCall.endedAt = endedAt
         try context.save()
+    }
+
+    // MARK: - PlanSnapshotRecord
+
+    /// Append a plan snapshot to a session — the full, current `[PlanItem]` list, JSON-encoded.
+    /// Drawn from the same session-wide counter `appendMessage` uses — see its doc comment.
+    public func appendPlanSnapshot(to session: Session, itemsJSON: String) throws -> PlanSnapshotRecord {
+        let nextSeq = session.nextEntrySequence
+        session.nextEntrySequence += 1
+        let snapshot = PlanSnapshotRecord(session: session, sequenceNumber: nextSeq, itemsJSON: itemsJSON)
+        context.insert(snapshot)
+        session.planSnapshots.append(snapshot)
+        try context.save()
+        return snapshot
     }
 
     // MARK: - UsageRecord

@@ -19,6 +19,11 @@ struct ZeroApp: App {
             PreviewData.seed(into: model)
         }
         let coordinator = SessionCoordinator(model: model)
+        // Before the first frame, not deferred to `.onAppear` — that would race the sidebar's
+        // first render showing empty (PRD FR-4/FR-6). Skipped under preview data: it already
+        // seeded `model` directly, and restoring here would overwrite that with whatever (likely
+        // nothing) happens to be in the real on-disk store on this machine.
+        if !PreviewData.isEnabled { coordinator.restoreFromStore() }
         let bridge = BridgeController(model: model, coordinator: coordinator)
         if PreviewData.isEnabled { PreviewData.seed(into: bridge) }
         _model = State(initialValue: model)
