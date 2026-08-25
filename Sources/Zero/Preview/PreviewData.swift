@@ -53,6 +53,7 @@ enum PreviewData {
             model: "claude-opus-5",
             branch: "zero/rate-limit-webhook-4a1",
             workspace: .currentCheckout,
+            worktreePath: repo.path,
             state: .running,
             initialPrompt: "Add rate limiting to the webhook handler, 100 requests per minute per client."
         )
@@ -306,7 +307,8 @@ enum PreviewData {
     ) -> AppModel.SessionSnapshot {
         var session = AppModel.SessionSnapshot(
             id: UUID(), projectID: repo, title: title, provider: "Claude Code", model: "claude-sonnet-5",
-            branch: branch, workspace: .isolatedWorktree, state: .idle, initialPrompt: title,
+            branch: branch, workspace: .isolatedWorktree, worktreePath: repo.path, state: .idle,
+            initialPrompt: title,
             // .auto, not the .ask default: the preview should show all three modes at least once
             // (see docs/DESIGN.md's "every UI change updates the preview too").
             permissionMode: .auto
@@ -322,7 +324,8 @@ enum PreviewData {
         var session = AppModel.SessionSnapshot(
             id: UUID(), projectID: repo, title: "Rotate the staging API key",
             provider: "Claude Code", model: "claude-sonnet-5",
-            branch: "zero/rotate-staging-key-77c", workspace: .currentCheckout, state: .waitingPermission,
+            branch: "zero/rotate-staging-key-77c", workspace: .currentCheckout,
+            worktreePath: repo.path, state: .waitingPermission,
             initialPrompt: "Rotate the staging API key and update the deploy script."
         )
         session.transcript.appendUserMessage(session.initialPrompt)
@@ -368,7 +371,8 @@ enum PreviewData {
         var session = AppModel.SessionSnapshot(
             id: UUID(), projectID: repo, title: "Add OpenAPI docs for /webhooks",
             provider: "Codex", model: "gpt-5.1-codex",
-            branch: "zero/openapi-webhooks-1d3", workspace: .isolatedWorktree, state: .finished,
+            branch: "zero/openapi-webhooks-1d3", workspace: .isolatedWorktree,
+            worktreePath: repo.path, state: .finished,
             initialPrompt: "Document the /webhooks endpoints in the OpenAPI spec.",
             permissionMode: .bypass
         )

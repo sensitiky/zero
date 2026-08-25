@@ -68,7 +68,10 @@ struct ConversationPane: View {
         Composer(
             placeholder: "Reply",
             fieldLabel: "Message to \(session.title)",
-            usage: session.usage
+            usage: session.usage,
+            // A restored session whose folder is gone can't be sent to — nothing would receive
+            // it. `openSession` already left a notice explaining why (PRD FR-9).
+            canSubmit: !session.folderMissing
         ) { text in
             guard let id = model.selectedSessionID else { return }
             Task { await coordinator.send(text, to: id) }

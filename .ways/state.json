@@ -1,125 +1,153 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-25T18:05:00Z",
-  "flow": "bug",
+  "updatedAt": "2026-08-25T20:05:00Z",
+  "flow": "feature",
   "way": "incu/dev",
   "wayVersion": "",
   "discipline": "development",
-  "slug": "004-composer-input-lag",
-  "branch": "fix/004-composer-input-lag",
+  "slug": "006-persistent-projects-sessions",
+  "branch": "feat/006-persistent-projects-sessions",
   "worktree": "",
   "isolationType": "branch",
-  "title": "Composer goes laggy and shows the wait cursor with a large draft",
+  "title": "Persistent projects and sessions across app restarts",
   "ticket": null,
-  "lastPhase": "fix-plan",
-  "phase": "implementation",
+  "lastPhase": "validation",
+  "phase": "review",
   "documents": [
     {
-      "name": "BUG.md",
-      "path": "docs/bugs/004-composer-input-lag/BUG.md",
+      "name": "PRD.md",
+      "path": "docs/prds/006-persistent-projects-sessions/PRD.md",
       "status": "approved"
     },
     {
-      "name": "ANALYSIS.md",
-      "path": "docs/bugs/004-composer-input-lag/ANALYSIS.md",
+      "name": "PLAN.md",
+      "path": "docs/prds/006-persistent-projects-sessions/PLAN.md",
       "status": "approved"
     },
     {
-      "name": "FIX_PLAN.md",
-      "path": "docs/bugs/004-composer-input-lag/FIX_PLAN.md",
+      "name": "TESTING.md",
+      "path": "docs/prds/006-persistent-projects-sessions/TESTING.md",
       "status": "approved"
     }
   ],
   "gates": [
     {
-      "id": "fix-plan",
-      "label": "Fix plan review",
+      "id": "prd",
+      "label": "PRD review",
       "status": "passed",
-      "at": "2026-08-25T16:45:11Z"
+      "at": "2026-08-25T18:40:00Z"
     },
     {
-      "id": "pr",
-      "label": "PR fix→develop",
+      "id": "plan",
+      "label": "Plan review",
+      "status": "passed",
+      "at": "2026-08-25T19:10:00Z"
+    },
+    {
+      "id": "testing",
+      "label": "User testing",
+      "status": "passed",
+      "at": "2026-08-25T20:15:00Z"
+    },
+    {
+      "id": "pr-develop",
+      "label": "PR feat→develop",
       "status": "pending",
-      "at": null,
-      "url": "https://github.com/sensitiky/zero/pull/17"
+      "at": null
+    },
+    {
+      "id": "pr-main",
+      "label": "PR develop→main",
+      "status": "pending",
+      "at": null
     }
   ],
   "steps": [
     {
-      "id": "S0",
-      "label": "Spike in Zero.app: hardcode a definite .frame(height:) on the field and sample — does a definite height remove the CoreText path at all?",
+      "id": "A1",
+      "label": "Models.swift: ToolCallRecord.sequenceNumber, PlanSnapshotRecord, nextEntrySequence rename, orderedToolCalls/orderedPlanSnapshots",
+      "status": "done"
+    },
+    {
+      "id": "A2",
+      "label": "Store.swift: shared Store.schema, appendMessage/appendToolCall use nextEntrySequence, appendPlanSnapshot, upsertRepository, listRepositories",
+      "status": "done"
+    },
+    {
+      "id": "A3",
+      "label": "Store.defaultModelContainer(baseDirectory:) + SessionCoordinator.currentStore() uses it",
+      "status": "done"
+    },
+    {
+      "id": "A4",
+      "label": "SessionState.init(persisted:errorMessage:)",
+      "status": "done"
+    },
+    {
+      "id": "B1",
+      "label": "Persist user messages: startSession initial prompt + send()",
+      "status": "done"
+    },
+    {
+      "id": "B2",
+      "label": "persistAndFlush: case .plan persists via appendPlanSnapshot",
+      "status": "done"
+    },
+    {
+      "id": "B3",
+      "label": "Repository upsert: SessionRuntime.create + SessionCoordinator.addProject + SidebarHeader call site",
+      "status": "done"
+    },
+    {
+      "id": "C1",
+      "label": "Transcript.restoring(_:) merge-sort builder + usage fold",
+      "status": "done"
+    },
+    {
+      "id": "C2",
+      "label": "SessionCoordinator.restoreFromStore(): projects/sessions populated pre-first-frame",
+      "status": "done"
+    },
+    {
+      "id": "C3",
+      "label": "LastSelection.swift (UserDefaults) + AppModel.selection persistence + restore wiring",
+      "status": "done"
+    },
+    {
+      "id": "D1",
+      "label": "Lazy SessionRuntime.resume on session open, not at restore time",
+      "status": "done"
+    },
+    {
+      "id": "D2",
+      "label": "SessionSnapshot.worktreePath + missing-folder notice + Composer canSubmit gating",
+      "status": "done"
+    },
+    {
+      "id": "T1",
+      "label": "StoreTests: defaultModelContainer path, durability round-trip, upsertRepository, appendPlanSnapshot, shared sequencing",
+      "status": "done"
+    },
+    {
+      "id": "T2",
+      "label": "TranscriptRestoreTests + SessionState.init(persisted:) tests",
+      "status": "done"
+    },
+    {
+      "id": "V1",
+      "label": "swift build/test (391 passing), lint-design-tokens, make-app.sh, real-app smoke test (launch/store-created/quit/relaunch clean, no crash) — automatable parts done; remaining scenarios need a person clicking through, see TESTING.md",
       "status": "done"
     },
     {
       "id": "S1",
-      "label": "ZeroCore: heightDeterminingPrefix(of:maxLines:) pure function + ZeroCoreTests (reproduction test, option A)",
-      "status": "done"
-    },
-    {
-      "id": "S2",
-      "label": "Composer.swift: definite height computed from the bounded prefix",
-      "status": "done"
-    },
-    {
-      "id": "S3",
-      "label": "Measure rung 1 in Zero.app at 50k chars — DONE: 77%->51% busy, insufficient (<30% required); remaining cost is the WIDTH query, 765/1007 display-cycle samples",
-      "status": "done"
-    },
-    {
-      "id": "S4",
-      "label": "Rung 2 DROPPED — NSHostingView.minSize() is the hosting view own query, not ZeroApp.swift:32; confirmed in the real profile, ZeroApp out of scope",
-      "status": "done"
-    },
-    {
-      "id": "S4a",
-      "label": "Probe rung 3a (.frame(width:height:)): 16->3 sizeThatFits calls but still O(draft) — REJECTED, moves the cliff",
-      "status": "done"
-    },
-    {
-      "id": "S4b",
-      "label": "Probe rung 3b (TextEditor): worse where measurable, text never arrived where flat — REJECTED",
-      "status": "done"
-    },
-    {
-      "id": "S4c",
-      "label": "Implement rung 3c: ComposerTextView (NSViewRepresentable over NSTextView), O(1) sizeThatFits from the bounded prefix + memo",
-      "status": "done"
-    },
-    {
-      "id": "S4c1",
-      "label": "Crash fix: SwiftUI probes the flexible child with an infinite width and Int(.infinity) trapped in sizeThatFits — the width clamp moved into ComposerMetrics.charactersPerLine(forWidth:) with a test; the unbounded probe now answers without measuring",
-      "status": "done"
-    },
-    {
-      "id": "S4d",
-      "label": "Measure rung 3c in Zero.app at 50k chars — acceptance: <30% busy, no cellSizeForBounds: on the display-cycle path",
-      "status": "todo"
-    },
-    {
-      "id": "S5",
-      "label": "Validation: swift build OK, swift test 377 OK, lint-design-tokens OK, make-app OK — still to check by hand: growth 1->10 lines, placeholder, Return/Shift-Return, focus ring, autofocus, VoiceOver label",
-      "status": "in-progress"
-    },
-    {
-      "id": "S6",
-      "label": "BUG.md status -> Fixed",
-      "status": "todo"
-    },
-    {
-      "id": "S7",
-      "label": "Security scans WAIVED by the user 2026-08-25 — recorded, not reported clean",
+      "label": "Security scans WAIVED by the user 2026-08-25 — recorded, not reported clean (Snyk SAST/SCA, SonarQube unavailable in this environment, same as 004-composer-input-lag)",
       "status": "done",
       "ext": {
         "incu": {
           "waived": true,
           "waivedBy": "user",
-          "waivedAt": "2026-08-25T16:45:11Z",
-          "scans": [
-            "snyk-sast",
-            "snyk-sca",
-            "sonarqube"
-          ]
+          "waivedAt": "2026-08-25T20:10:00Z",
+          "scans": ["snyk-sast", "snyk-sca", "sonarqube"]
         }
       }
     }
