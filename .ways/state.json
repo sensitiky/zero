@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-25T17:53:21Z",
+  "updatedAt": "2026-08-25T18:05:00Z",
   "flow": "bug",
   "way": "incu/dev",
   "wayVersion": "",
@@ -41,7 +41,8 @@
       "id": "pr",
       "label": "PR fix→develop",
       "status": "pending",
-      "at": null
+      "at": null,
+      "url": "https://github.com/sensitiky/zero/pull/17"
     }
   ],
   "steps": [
