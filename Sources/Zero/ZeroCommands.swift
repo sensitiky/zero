@@ -25,6 +25,20 @@ struct ZeroCommands: Commands {
                 .keyboardShortcut("]", modifiers: [.command, .shift])
             Button("Previous Session") { move(by: -1) }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
+            // ⌘B for the session/project sidebar, ⌘F for the file tree — one letter per panel,
+            // matched to what it toggles rather than sharing a single "the" sidebar shortcut.
+            Button(model.sidebarVisibility == .all ? "Hide Sidebar" : "Show Sidebar") {
+                model.sidebarVisibility = model.sidebarVisibility == .all ? .detailOnly : .all
+            }
+            .keyboardShortcut("b", modifiers: .command)
+            // Toggleable, not a permanent column (docs/prds/007-file-tree-sidebar/PRD.md) — a menu
+            // command is what makes the shortcut discoverable rather than folklore, same reasoning
+            // the session-navigation commands above already rest on.
+            Button(model.showsFileTree ? "Hide File Tree" : "Show File Tree") {
+                model.showsFileTree.toggle()
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            .disabled(model.selectedSession == nil)
         }
     }
 

@@ -80,6 +80,15 @@ final class AppModel {
     var selection: Selection? {
         didSet { LastSelection.save(selection) }
     }
+    /// Whether the file-tree panel is showing. Transient — not persisted across restarts, unlike
+    /// `selection`; `007-file-tree-sidebar`'s PRD never asked for that, and it isn't added on
+    /// spec (see `LastSelection`'s own doc comment for the contrast: that one was added because
+    /// it was explicitly required).
+    var showsFileTree = false
+    /// The session/project sidebar's own visibility — ⌘B, mirroring ⌘F for the file tree.
+    /// `NavigationSplitView`'s own binding, not a `Bool`: SwiftUI owns the intermediate states
+    /// (a drag, a resize), this only ever sets it to `.all` or `.detailOnly`.
+    var sidebarVisibility: NavigationSplitViewVisibility = .all
     // Deliberately absent: the composer's text.
     //
     // It used to live here, and every keystroke invalidated everything observing this model — the
