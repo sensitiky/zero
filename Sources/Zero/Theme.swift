@@ -112,6 +112,52 @@ enum Theme {
         foreground(scheme).opacity(secondaryOpacity)
     }
 
+    // MARK: - Syntax
+
+    /// Color for the file-tree preview's syntax highlighting
+    /// (`docs/prds/007-file-tree-sidebar/PRD.md` FR-6) — the one place in this app text is colored
+    /// by token. Added after Gate 3 at the user's explicit request ("vercel code theme"), reversing
+    /// that PRD's original monochrome-only preview.
+    ///
+    /// Deliberately **not** the accent color above: that one means one specific thing ("the agent
+    /// is waiting for you") and `Scripts/lint-design-tokens.sh` counts its every use — reusing it
+    /// here would make that count lie. This is its own small, separate palette, chosen to read
+    /// clearly against both `ink` and `paper` without being mistaken for the accent's violet. `.comment`
+    /// isn't a color at all — it reuses `Theme.secondary`, a dimmed line being exactly what a
+    /// comment already means everywhere else text is de-emphasized in this app.
+    ///
+    /// Doubles as the file tree's git-diff palette (`.added`/`.modified`, same green/amber as
+    /// `.string`/`.number` — the file tree marks a new file the same green a highlighted string
+    /// reads as, and a changed one the same amber a highlighted number does, rather than adding a
+    /// third small palette for what is, visually, the same kind of thing: content-level
+    /// colorization, distinct from the app's one UI-status accent).
+    enum Syntax {
+        static func keyword(_ scheme: ColorScheme) -> Color {
+            scheme == .dark
+                ? Color(red: 0xF9 / 255, green: 0x7A / 255, blue: 0xD6 / 255)
+                : Color(red: 0xB8 / 255, green: 0x1B / 255, blue: 0x7A / 255)
+        }
+
+        static func string(_ scheme: ColorScheme) -> Color {
+            scheme == .dark
+                ? Color(red: 0x7E / 255, green: 0xE7 / 255, blue: 0x87 / 255)
+                : Color(red: 0x1A / 255, green: 0x7A / 255, blue: 0x3A / 255)
+        }
+
+        static func number(_ scheme: ColorScheme) -> Color {
+            scheme == .dark
+                ? Color(red: 0xF3 / 255, green: 0xB0 / 255, blue: 0x5C / 255)
+                : Color(red: 0xA5 / 255, green: 0x5A / 255, blue: 0x00 / 255)
+        }
+
+        /// A new/untracked file or folder in the file tree. Same value as `.string` — see the
+        /// type's doc comment.
+        static func added(_ scheme: ColorScheme) -> Color { string(scheme) }
+
+        /// A file or folder with uncommitted changes in the file tree. Same value as `.number`.
+        static func modified(_ scheme: ColorScheme) -> Color { number(scheme) }
+    }
+
     // MARK: - Type
 
     /// The face for anything that is code: a path, a command, a diff, a tool name, a model id.

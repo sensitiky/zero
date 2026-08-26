@@ -7,12 +7,28 @@ struct RootView: View {
     @Bindable var coordinator: SessionCoordinator
     @Environment(\.colorScheme) private var scheme
 
+    /// Owned here, not inside `FileTreePanel` — see `FileTreeState`'s doc comment for why: this
+    /// is what lets closing and reopening the panel keep your place instead of losing it.
+    @State private var fileTreeState = FileTreeState()
+    @State private var fileTreeWidth: CGFloat = 280
+
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $model.sidebarVisibility) {
             SessionSidebar(model: model, coordinator: coordinator)
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 380)
         } detail: {
-            ConversationPane(model: model, coordinator: coordinator)
+            // A plain HStack, not a third NavigationSplitView column: toggleable and costs
+            // nothing hidden, rather than a permanent column always taking space (PRD
+            // docs/prds/007-file-tree-sidebar/PRD.md, and the precedent in UsageIndicator.swift
+            // against a permanent inspector).
+            HStack(spacing: 0) {
+                ConversationPane(model: model, coordinator: coordinator)
+                if model.showsFileTree, let session = model.selectedSession {
+                    ResizableDivider(width: $fileTreeWidth, range: 200...520)
+                    FileTreePanel(root: URL(fileURLWithPath: session.worktreePath), state: fileTreeState)
+                        .frame(width: fileTreeWidth)
+                }
+            }
         }
         .zeroSurface(scheme)
         .onAppear { StartupClock.reportFirstFrame() }
