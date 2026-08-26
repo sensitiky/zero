@@ -59,6 +59,14 @@ public actor AgentProcess {
     private let reader: LineReader
     private var running = false
 
+    /// Every read of stdout/stderr — from the readability handlers and from the termination-time
+    /// drain below — happens on this one serial queue. Without it, a process that exits right
+    /// after writing (`echo first; echo second`) races `readabilityHandler`'s read against
+    /// `terminationHandler`'s `readToEnd()`: both call `read(2)` on the same pipe, whichever wins
+    /// gets the bytes, and the loser silently sees nothing. Serializing the reads — not just the
+    /// processing after them — is what makes the drain safe.
+    private let ioQueue = DispatchQueue(label: "AgentProcess.io")
+
     public init(configuration: Configuration) {
         _ = sigpipeIgnored
         self.configuration = configuration
@@ -81,27 +89,34 @@ public actor AgentProcess {
 
         let continuation = self.continuation
         let reader = self.reader
-
-        stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
-            do {
-                for record in try reader.feed(chunk) {
-                    continuation.yield(.record(record))
-                }
-            } catch {
-                continuation.yield(.streamFailure(String(describing: error)))
-            }
-        }
-
-        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            guard !chunk.isEmpty, let text = String(data: chunk, encoding: .utf8) else { return }
-            continuation.yield(.diagnostic(text))
-        }
+        let ioQueue = self.ioQueue
 
         let stdoutHandle = stdoutPipe.fileHandleForReading
         let stderrHandle = stderrPipe.fileHandleForReading
+
+        // The handler only gets *notified* data is available; the actual `read(2)` (`availableData`)
+        // happens inside `ioQueue`, same as the termination drain below — that's what serializes them.
+        stdoutPipe.fileHandleForReading.readabilityHandler = { _ in
+            ioQueue.async {
+                let chunk = stdoutHandle.availableData
+                guard !chunk.isEmpty else { return }
+                do {
+                    for record in try reader.feed(chunk) {
+                        continuation.yield(.record(record))
+                    }
+                } catch {
+                    continuation.yield(.streamFailure(String(describing: error)))
+                }
+            }
+        }
+
+        stderrPipe.fileHandleForReading.readabilityHandler = { _ in
+            ioQueue.async {
+                let chunk = stderrHandle.availableData
+                guard !chunk.isEmpty, let text = String(data: chunk, encoding: .utf8) else { return }
+                continuation.yield(.diagnostic(text))
+            }
+        }
 
         process.terminationHandler = { process in
             // Drain what is still in the pipes before finishing.
@@ -109,21 +124,25 @@ public actor AgentProcess {
             // `readabilityHandler` fires asynchronously, so a process that exits immediately — a
             // CLI rejecting a flag, say — can terminate before the handler has read a single byte.
             // Finishing the stream here without draining silently discarded that output, leaving
-            // callers with an exit code and no explanation of it.
+            // callers with an exit code and no explanation of it. Cancelling the handlers here stops
+            // *new* reads from being scheduled; running the drain itself on `ioQueue` (synchronously)
+            // waits out any read already in flight before stealing its bytes.
             stdoutHandle.readabilityHandler = nil
             stderrHandle.readabilityHandler = nil
 
-            if let remaining = try? stdoutHandle.readToEnd(), !remaining.isEmpty {
-                if let records = try? reader.feed(remaining) {
-                    for record in records { continuation.yield(.record(record)) }
+            ioQueue.sync {
+                if let remaining = try? stdoutHandle.readToEnd(), !remaining.isEmpty {
+                    if let records = try? reader.feed(remaining) {
+                        for record in records { continuation.yield(.record(record)) }
+                    }
                 }
-            }
-            if let trailing = reader.flush() {
-                continuation.yield(.record(trailing))
-            }
-            if let remaining = try? stderrHandle.readToEnd(), !remaining.isEmpty,
-               let text = String(data: remaining, encoding: .utf8) {
-                continuation.yield(.diagnostic(text))
+                if let trailing = reader.flush() {
+                    continuation.yield(.record(trailing))
+                }
+                if let remaining = try? stderrHandle.readToEnd(), !remaining.isEmpty,
+                   let text = String(data: remaining, encoding: .utf8) {
+                    continuation.yield(.diagnostic(text))
+                }
             }
 
             continuation.yield(
