@@ -162,13 +162,15 @@ struct DiffView: View {
             Text(marker(for: line.kind))
                 .font(Theme.code())
                 .foregroundStyle(Theme.secondary(scheme))
-            Text(line.text)
+            SyntaxHighlightedText.line(line.text, forFileNamed: edit.path, scheme: scheme)
                 .font(Theme.code())
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        // Monochrome palette, so removed and added lines are told apart by their marker and by a
-        // tint of the single foreground colour, not by red and green.
+        // The row's own added/removed signal stays monochrome — a marker and a tint of the single
+        // foreground colour, never red and green — regardless of whether the line's own text is
+        // syntax-highlighted. Two different visual layers (background wash, per-character
+        // foreground), which is why layering them doesn't read as noisy.
         .padding(.horizontal, 6)
         .padding(.vertical, 1)
         .background(Theme.foreground(scheme).opacity(tint(for: line.kind)))

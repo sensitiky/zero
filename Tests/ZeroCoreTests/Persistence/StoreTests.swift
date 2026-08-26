@@ -376,4 +376,120 @@ struct StoreTests {
         #expect(ordered.map { $0.sequenceNumber } == Array(0..<200))
         #expect(ordered.map { $0.content } == (0..<200).map { "m\($0)" })
     }
+
+    // MARK: - 006-persistent-projects-sessions
+
+    @Test("upsertRepository returns the same row for the same path, not a duplicate")
+    func upsertRepositoryDeduplicatesByPath() throws {
+        let store = try createTestStore()
+        let first = try store.upsertRepository(path: "/tmp/repo", name: "repo", defaultBranch: "main")
+        let second = try store.upsertRepository(path: "/tmp/repo", name: "repo", defaultBranch: "main")
+        #expect(first.id == second.id)
+        #expect(try store.listRepositories().count == 1)
+    }
+
+    @Test("listRepositories returns creation order")
+    func listRepositoriesOrder() throws {
+        let store = try createTestStore()
+        let a = try store.createRepository(path: "/tmp/a", name: "a", defaultBranch: "main")
+        let b = try store.createRepository(path: "/tmp/b", name: "b", defaultBranch: "main")
+        #expect(try store.listRepositories().map(\.id) == [a.id, b.id])
+    }
+
+    @Test("appendPlanSnapshot round-trips in sequence order")
+    func planSnapshotsRoundTrip() throws {
+        let store = try createTestStore()
+        let session = try store.createSession(
+            repository: nil, provider: "claude-code", model: "haiku",
+            worktreePath: "/tmp/wt", branch: "zero/plan"
+        )
+        _ = try store.appendPlanSnapshot(to: session, itemsJSON: #"[{"id":"1"}]"#)
+        _ = try store.appendPlanSnapshot(to: session, itemsJSON: #"[{"id":"1"},{"id":"2"}]"#)
+        let fetched = try store.fetchSession(id: session.id)
+        let ordered = fetched?.orderedPlanSnapshots ?? []
+        #expect(ordered.count == 2)
+        #expect(ordered.map(\.itemsJSON) == [#"[{"id":"1"}]"#, #"[{"id":"1"},{"id":"2"}]"#])
+    }
+
+    @Test(
+        "messages, tool calls, and plan snapshots share one gapless, chronological sequence"
+    )
+    func sharedEntrySequenceInterleaves() throws {
+        let store = try createTestStore()
+        let session = try store.createSession(
+            repository: nil, provider: "claude-code", model: "haiku",
+            worktreePath: "/tmp/wt", branch: "zero/seq"
+        )
+        let userMsg = try store.appendMessage(to: session, role: "user", content: "hi")
+        let asstMsg = try store.appendMessage(to: session, role: "assistant", content: "")
+        let toolCall = try store.appendToolCall(to: asstMsg, id: "t1", name: "Read", input: nil)
+        _ = try store.appendPlanSnapshot(to: session, itemsJSON: "[]")
+
+        #expect(userMsg.sequenceNumber == 0)
+        #expect(asstMsg.sequenceNumber == 1)
+        #expect(toolCall.sequenceNumber == 2)
+        let fetched = try store.fetchSession(id: session.id)
+        #expect(fetched?.orderedPlanSnapshots.first?.sequenceNumber == 3)
+        // No two entries share a position, and nothing skipped one — otherwise a restore built by
+        // sorting on this field could interleave rows in the wrong order or drop one silently.
+        let allSequences = [userMsg.sequenceNumber, asstMsg.sequenceNumber, toolCall.sequenceNumber]
+            + (fetched.map { [$0.orderedPlanSnapshots.first!.sequenceNumber] } ?? [])
+        #expect(Set(allSequences).count == allSequences.count)
+    }
+
+    @Test("appendToolCall on a message with no session throws rather than silently misordering")
+    func appendToolCallRequiresAttachedSession() throws {
+        let store = try createTestStore()
+        let detached = Message(session: nil, role: "assistant", content: "", sequenceNumber: 0)
+        #expect(throws: StoreError.detachedMessage) {
+            _ = try store.appendToolCall(to: detached, id: "t1", name: "Read", input: nil)
+        }
+    }
+
+    @Test("defaultModelContainer resolves under the given base directory and bundle id, not the app bundle")
+    func defaultModelContainerResolvesUnderApplicationSupport() throws {
+        let tempBase = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempBase) }
+
+        let container = try Store.defaultModelContainer(baseDirectory: tempBase)
+        let store = try Store(modelContainer: container)
+        _ = try store.createRepository(path: "/tmp/repo", name: "repo", defaultBranch: "main")
+        try store.flush()
+
+        let bundleID = Bundle.main.bundleIdentifier ?? "the.stool.zero"
+        let expectedDirectory = tempBase.appendingPathComponent(bundleID, isDirectory: true)
+        #expect(
+            FileManager.default.fileExists(
+                atPath: expectedDirectory.appendingPathComponent("Zero.store").path
+            )
+        )
+        // Not inside the app bundle, wherever the test binary happens to live.
+        #expect(!expectedDirectory.path.hasPrefix(Bundle.main.bundleURL.path))
+    }
+
+    @Test("defaultModelContainer is durable: a second Store against the same location reads what the first wrote")
+    func defaultModelContainerIsDurableAcrossInstances() throws {
+        let tempBase = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempBase) }
+
+        let sessionID: UUID
+        do {
+            let store = try Store(modelContainer: Store.defaultModelContainer(baseDirectory: tempBase))
+            let repo = try store.createRepository(path: "/tmp/repo", name: "repo", defaultBranch: "main")
+            let session = try store.createSession(
+                repository: repo, provider: "claude-code", model: "haiku",
+                worktreePath: "/tmp/repo", branch: "main"
+            )
+            _ = try store.appendMessage(to: session, role: "user", content: "hello")
+            try store.flush()
+            sessionID = session.id
+        }
+        // A fresh Store, fresh ModelContainer, same on-disk location — this is what a relaunch is.
+        let reopened = try Store(modelContainer: Store.defaultModelContainer(baseDirectory: tempBase))
+        let restored = try reopened.fetchSession(id: sessionID)
+        #expect(restored?.orderedMessages.first?.content == "hello")
+        #expect(restored?.repository?.path == "/tmp/repo")
+    }
 }

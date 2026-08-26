@@ -32,6 +32,48 @@ public actor GitService {
         return !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// Every file with uncommitted changes, keyed by its path relative to the repository root —
+    /// the file-tree diff indicators (`007-file-tree-sidebar`).
+    ///
+    /// Parses `git status --porcelain=v1 -uall` (`-uall` so an untracked file inside an untracked
+    /// directory is listed individually rather than collapsed to the directory, which is what a
+    /// per-file tree indicator needs). A renamed path (`R  old -> new`) is recorded under `new`
+    /// only — the rename itself isn't represented, a stated simplification (this is presence/
+    /// absence of a change, not `git status`'s full vocabulary). A deleted file has no row: it
+    /// isn't in the map at all, since nothing on disk exists to show a tree row for it either.
+    ///
+    /// - throws: ``GitError`` if the git command fails.
+    public func workingTreeStatus() throws -> [String: GitFileStatus] {
+        let output = try runGit(["status", "--porcelain=v1", "-uall"])
+        var status: [String: GitFileStatus] = [:]
+        for line in output.split(separator: "\n") {
+            guard line.count > 3 else { continue }
+            let x = line[line.startIndex]
+            let y = line[line.index(line.startIndex, offsetBy: 1)]
+            var path = String(line.dropFirst(3))
+            if let arrow = path.range(of: " -> ") {
+                path = String(path[arrow.upperBound...])
+            }
+            if x == "D" || y == "D" {
+                continue // deleted: no row to mark, see the doc comment above.
+            } else if x == "?" || x == "A" {
+                status[path] = .added
+            } else {
+                status[path] = .modified
+            }
+        }
+        return status
+    }
+
+    /// A file's content at `HEAD`, or `nil` if it has none there (new/untracked) — what a
+    /// modified file's in-file diff (FR-6 addendum) is compared against.
+    ///
+    /// - parameter relativePath: Path relative to the repository root, matching what
+    ///   `workingTreeStatus()` keys its map with.
+    public func headContent(ofRelativePath relativePath: String) -> String? {
+        runGitQuiet(["show", "HEAD:\(relativePath)"])
+    }
+
     /// Resolves the base branch for creating a worktree.
     ///
     /// Returns the currently checked-out branch in the repository.
@@ -257,67 +299,17 @@ public actor GitService {
     /// Resolves symlinks and normalizes paths (replacing `..` and `.`) before comparison.
     ///
     /// - throws: ``GitError/pathOutsideRepository`` if the path is not under the repository root.
+    ///
+    /// Delegates to `PathContainment` — see its doc comment for why this isn't reimplemented here
+    /// (`007-file-tree-sidebar` needed the identical guarantee for reading file content that never
+    /// touches git). `PathContainmentError` is translated to `GitError.pathOutsideRepository` so
+    /// every existing caller and test keeps seeing the same error type it always has.
     private func validatePathInsideRepository(_ path: URL) throws {
-        let repoResolved = try resolvePathFully(repositoryPath.path)
-        let pathResolved = try resolvePathFully(path.path)
-
-        // Ensure the resolved path is under the repo root
-        guard pathResolved.hasPrefix(repoResolved) else {
+        do {
+            try PathContainment.validate(path, isUnder: repositoryPath)
+        } catch is PathContainmentError {
             throw GitError.pathOutsideRepository(path: path.path, repoRoot: repositoryPath.path)
         }
-
-        // Check that it's a proper subdirectory, not a prefix match on directory names
-        // e.g., /repo/secret is not a child of /repo-evil
-        if pathResolved != repoResolved {
-            let afterRoot = String(pathResolved.dropFirst(repoResolved.count))
-            guard afterRoot.hasPrefix("/") || afterRoot.isEmpty else {
-                throw GitError.pathOutsideRepository(path: path.path, repoRoot: repositoryPath.path)
-            }
-        }
-    }
-
-    /// Resolves a path by expanding symlinks and normalizing `..` components.
-    ///
-    /// Resolves symlinks at every component level to detect escapes.
-    private func resolvePathFully(_ path: String) throws -> String {
-        let normalized = (path as NSString).standardizingPath
-
-        // Ensure absolute path
-        guard normalized.hasPrefix("/") else {
-            throw GitError.notARepository(path: path)
-        }
-
-        var resolved = ""
-        var visited = Set<String>()
-
-        for component in normalized.split(separator: "/", omittingEmptySubsequences: true) {
-            resolved += "/" + component
-
-            // Detect cycles
-            guard !visited.contains(resolved) else {
-                throw GitError.pathOutsideRepository(path: path, repoRoot: resolved)
-            }
-            visited.insert(resolved)
-
-            // Check if this component is a symlink
-            do {
-                let target = try fileManager.destinationOfSymbolicLink(atPath: resolved)
-                // Resolve the symlink target
-                if target.hasPrefix("/") {
-                    resolved = target
-                } else {
-                    // Relative symlink: resolve relative to parent
-                    let parent = (resolved as NSString).deletingLastPathComponent
-                    resolved = (parent as NSString).appendingPathComponent(target)
-                }
-                // Normalize after resolving
-                resolved = (resolved as NSString).standardizingPath
-            } catch {
-                // Not a symlink, continue
-            }
-        }
-
-        return resolved.isEmpty ? "/" : resolved
     }
 
     /// Runs a git command with the given arguments, returning stdout.

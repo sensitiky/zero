@@ -29,7 +29,16 @@ struct SessionSidebar: View {
         } else if model.visibleProjects.isEmpty {
             emptyState("No matches", "Nothing matches “\(model.searchText)”.")
         } else {
-            List(selection: $model.selection) {
+            // A custom binding, not `$model.selection` directly: selecting a restored session is
+            // the one moment `SessionCoordinator` needs to hear about it, to lazily resume it if
+            // it isn't already live (see `SessionCoordinator.openSession`, PRD FR-7).
+            List(selection: Binding(
+                get: { model.selection },
+                set: { newValue in
+                    model.selection = newValue
+                    if case .session(let id) = newValue { Task { await coordinator.openSession(id) } }
+                }
+            )) {
                 ForEach(model.visibleProjects) { project in
                     Section {
                         let sessions = model.sessions(in: project)

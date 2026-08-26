@@ -52,7 +52,14 @@ public final class Session {
     /// faulting every existing row on every append, which is O(n) per append and O(n²) per
     /// session. That cost is what an earlier revision of this file measured and mistook for
     /// SwiftData being unsuitable — see MEASUREMENTS.md.
-    public var nextMessageSequence: Int = 0
+    ///
+    /// `nextEntrySequence` is shared by every row type that can appear in the rendered transcript
+    /// — `Message`, `ToolCallRecord`, `PlanSnapshotRecord` — rather than each having its own. A
+    /// live transcript is one flat, chronologically ordered array interleaving text, tool calls
+    /// and plan updates; three independent counters can't be compared to reconstruct that order,
+    /// one shared counter can. `nextUsageSequence` stays separate: usage is never a rendered
+    /// entry, it only ever folds into running totals.
+    public var nextEntrySequence: Int = 0
     public var nextUsageSequence: Int = 0
 
     @Relationship(deleteRule: .cascade, inverse: \Message.session)
@@ -63,6 +70,9 @@ public final class Session {
 
     @Relationship(deleteRule: .cascade, inverse: \PermissionRequestRecord.session)
     public var permissionRequests: [PermissionRequestRecord] = []
+
+    @Relationship(deleteRule: .cascade, inverse: \PlanSnapshotRecord.session)
+    public var planSnapshots: [PlanSnapshotRecord] = []
 
     /// The transcript in order.
     ///
@@ -77,6 +87,18 @@ public final class Session {
     /// Usage in order, for the same reason.
     public var orderedUsageRecords: [UsageRecord] {
         usageRecords.sorted { $0.sequenceNumber < $1.sequenceNumber }
+    }
+
+    /// Every tool call across every message in this session, in the order they actually
+    /// happened — not grouped by message, since a live transcript never grouped them that way
+    /// either. Same unordered-relationship reasoning as `orderedMessages`.
+    public var orderedToolCalls: [ToolCallRecord] {
+        messages.flatMap(\.toolCalls).sorted { $0.sequenceNumber < $1.sequenceNumber }
+    }
+
+    /// Plan snapshots in order, for the same reason.
+    public var orderedPlanSnapshots: [PlanSnapshotRecord] {
+        planSnapshots.sorted { $0.sequenceNumber < $1.sequenceNumber }
     }
 
     public init(
@@ -158,6 +180,11 @@ public final class ToolCallRecord {
     public var startedAt: Date?
     public var endedAt: Date?
 
+    /// Position in the session's shared entry order — see `Session.nextEntrySequence`. Defaulted
+    /// to `0` so a row written before this field existed still decodes, same as
+    /// `Session.permissionMode`'s default.
+    public var sequenceNumber: Int = 0
+
     public init(
         id: String,
         message: Message? = nil,
@@ -170,7 +197,8 @@ public final class ToolCallRecord {
         editOldText: String? = nil,
         editNewText: String? = nil,
         startedAt: Date? = nil,
-        endedAt: Date? = nil
+        endedAt: Date? = nil,
+        sequenceNumber: Int = 0
     ) {
         self.id = id
         self.message = message
@@ -184,6 +212,7 @@ public final class ToolCallRecord {
         self.editNewText = editNewText
         self.startedAt = startedAt
         self.endedAt = endedAt
+        self.sequenceNumber = sequenceNumber
     }
 }
 
@@ -300,6 +329,38 @@ public final class PricingEntry {
         self.cacheReadPrice = cacheReadPrice
         self.cacheWritePrice = cacheWritePrice
         self.tableVersion = tableVersion
+        self.recordedAt = Date()
+    }
+}
+
+// MARK: - PlanSnapshotRecord
+
+/// One agent-reported plan/checklist update in a session.
+///
+/// Mirrors `UsageRecord`'s shape rather than modeling `PlanItem` as its own related table: a plan
+/// is always replaced whole (`AgentEvent.plan([PlanItem])` reports the full list each time, never
+/// a delta), so one JSON blob per update is what's actually being stored, not a relational
+/// structure with rows worth querying independently.
+@Model
+public final class PlanSnapshotRecord {
+    @Attribute(.unique) public var id: UUID
+    public var session: Session?
+    /// Position in the session's shared entry order — see `Session.nextEntrySequence`.
+    public var sequenceNumber: Int
+    /// JSON-encoded `[PlanItem]`.
+    public var itemsJSON: String
+    public var recordedAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        session: Session? = nil,
+        sequenceNumber: Int,
+        itemsJSON: String
+    ) {
+        self.id = id
+        self.session = session
+        self.sequenceNumber = sequenceNumber
+        self.itemsJSON = itemsJSON
         self.recordedAt = Date()
     }
 }

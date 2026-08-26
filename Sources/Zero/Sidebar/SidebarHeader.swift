@@ -6,12 +6,14 @@ struct SidebarHeader: View {
     @Bindable var model: AppModel
     @Bindable var coordinator: SessionCoordinator
     @Environment(\.colorScheme) private var scheme
+    @Environment(BridgeController.self) private var bridge
+    @State private var showingBridge = false
 
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 6) {
                 Button {
-                    if let url = coordinator.chooseRepository() { model.addProject(url) }
+                    if let url = coordinator.chooseRepository() { coordinator.addProject(url) }
                 } label: {
                     Image(systemName: "folder.badge.plus")
                 }
@@ -39,6 +41,33 @@ struct SidebarHeader: View {
                 .accessibilityLabel("New session in a project")
 
                 Spacer(minLength: 0)
+
+                // A popover, the pattern the usage ring already established, and for the same
+                // reason: this is a switch and a code you glance at, not a column of the window and
+                // not a settings window (DESIGN.md, "No second sidebar").
+                Button {
+                    showingBridge.toggle()
+                } label: {
+                    // The state is carried by the shape — a struck-through antenna when off — since
+                    // the accent means one thing in this app and it is not this.
+                    Image(
+                        systemName: bridge.isListening
+                            ? "antenna.radiowaves.left.and.right"
+                            : "antenna.radiowaves.left.and.right.slash"
+                    )
+                }
+                .buttonStyle(.borderless)
+                .help(bridge.isListening ? "Bridge — listening" : "Bridge — off")
+                .accessibilityLabel(
+                    bridge.isListening ? "Bridge, listening. Open bridge panel."
+                        : "Bridge, off. Open bridge panel."
+                )
+                .popover(isPresented: $showingBridge, arrowEdge: .bottom) {
+                    // A popover is already a floating container, so it declares the floating level
+                    // through its own background rather than nesting a second panel inside itself.
+                    BridgePanel(bridge: bridge)
+                        .presentationBackground(.thickMaterial)
+                }
             }
 
             HStack(spacing: 5) {
