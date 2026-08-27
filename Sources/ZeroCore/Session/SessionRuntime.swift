@@ -201,6 +201,17 @@ public actor SessionRuntime {
         }
     }
 
+    /// Builds the `--model` argument a session's picked model requires for Claude Code.
+    ///
+    /// Only Claude Code takes its model on the command line — Codex and ACP select a model
+    /// through their own protocol, not a launch argument, so this returns `[]` for every other
+    /// provider. Also `[]` for an empty model: nothing was picked, so nothing overrides the CLI's
+    /// own default.
+    private static func modelArguments(provider: ProviderDescriptor, model: String) -> [String] {
+        guard provider.id == ProviderDescriptor.claude.id, !model.isEmpty else { return [] }
+        return ["--model", model]
+    }
+
     // MARK: - Creation
 
     /// What a session's branch reads as when there is no branch to name — no repository, no commit
@@ -272,7 +283,7 @@ public actor SessionRuntime {
             provider: config.provider,
             mode: config.permissionMode,
             permissionSetup: permissionSetup
-        )
+        ) + Self.modelArguments(provider: config.provider, model: config.model)
 
         // Build process configuration first (before MainActor work)
         let processConfig: AgentProcess.Configuration
@@ -397,6 +408,7 @@ public actor SessionRuntime {
             let providerSessionID: String?
             let provider: String
             let permissionMode: PermissionMode
+            let model: String
         }
 
         let restored: Restored = try await MainActor.run {
@@ -408,7 +420,8 @@ public actor SessionRuntime {
                 worktree: worktree,
                 providerSessionID: session.providerSessionId,
                 provider: session.provider,
-                permissionMode: permissionMode ?? PermissionMode(persisted: session.permissionMode)
+                permissionMode: permissionMode ?? PermissionMode(persisted: session.permissionMode),
+                model: session.model
             )
         }
 
@@ -446,6 +459,7 @@ public actor SessionRuntime {
                 for: descriptor,
                 workingDirectory: restored.worktree,
                 extraArguments: permissionArgs + ["--resume", providerSessionID]
+                    + Self.modelArguments(provider: descriptor, model: restored.model)
             )
         } catch {
             throw CreationError.providerError(String(describing: error))

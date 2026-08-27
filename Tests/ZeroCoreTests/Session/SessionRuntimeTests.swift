@@ -382,6 +382,49 @@ struct SessionRuntimeTests {
         #expect(!configuration.arguments.contains("--permission-prompt-tool"))
     }
 
+    @Test("resume() relaunches Claude Code with the session's persisted model")
+    func resumePassesThePersistedModel() async throws {
+        let store = try createTestStore()
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        let sessionID = try await MainActor.run {
+            try store.createSession(
+                repository: nil,
+                provider: ProviderDescriptor.claude.id,
+                model: "claude-haiku-4-5",
+                worktreePath: repo.path,
+                branch: "main",
+                providerSessionId: "abc-123"
+            ).id
+        }
+
+        let stub = try makeArgvEchoingStub()
+        defer { try? FileManager.default.removeItem(at: stub) }
+        let registry = ProviderRegistry(
+            resolveExecutable: { _, _ in stub },
+            getVersion: { _, _ in "2.1.237 (Claude Code)" }
+        )
+
+        let runtime = try await SessionRuntime.resume(
+            sessionID: sessionID,
+            store: store,
+            providerRegistry: registry
+        )
+        await runtime.closeStdin()
+
+        var echoed = ""
+        for await event in runtime.transcript {
+            if case .unrecognized(let raw) = event { echoed += String(decoding: raw, as: UTF8.self) }
+        }
+        await runtime.waitUntilFinished()
+
+        #expect(echoed.contains("--resume"))
+        #expect(echoed.contains("abc-123"))
+        #expect(echoed.contains("--model"))
+        #expect(echoed.contains("claude-haiku-4-5"))
+    }
+
     @Test("a session with no provider id resumes read-only with its history intact")
     func resumeWithoutProviderIDIsReadOnly() async throws {
         let store = try createTestStore()
@@ -689,6 +732,45 @@ struct SessionRuntimeTests {
         #expect(echoed.contains("--settings"))
         #expect(echoed.contains("PreToolUse"))
         #expect(echoed.contains("zero-permission-hook"))
+    }
+
+    // MARK: - The picked model actually gets launched (009-session-model-not-applied)
+
+    @Test("create() launches Claude Code with the model picked in CreationConfig")
+    func createPassesThePickedModelToClaudeCode() async throws {
+        // The regression: `config.model` was only ever written to the store for display —
+        // nothing turned it into a `--model` argument, so every session ran whichever model the
+        // `claude` CLI defaults to, regardless of what was picked in the UI.
+        let store = try createTestStore()
+        let repo = try createTempDirectory()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try makeRepository(at: repo)
+
+        let stub = try makeArgvEchoingStub()
+        defer { try? FileManager.default.removeItem(at: stub) }
+        let registry = ProviderRegistry(
+            resolveExecutable: { _, _ in stub },
+            getVersion: { _, _ in "2.1.237 (Claude Code)" }
+        )
+
+        let runtime = try await SessionRuntime.create(
+            with: .init(
+                repository: repo, provider: .claude, model: "claude-haiku-4-5", prompt: "t",
+                permissionMode: .bypass
+            ),
+            store: store,
+            providerRegistry: registry
+        )
+        await runtime.closeStdin()
+
+        var echoed = ""
+        for await event in runtime.transcript {
+            if case .unrecognized(let raw) = event { echoed += String(decoding: raw, as: UTF8.self) }
+        }
+        await runtime.waitUntilFinished()
+
+        #expect(echoed.contains("--model"))
+        #expect(echoed.contains("claude-haiku-4-5"))
     }
 
     @Test("create() in .auto mode narrows the hook to network tools and adds --permission-mode auto")
