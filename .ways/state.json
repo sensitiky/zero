@@ -22,7 +22,7 @@
     { "id": "prd", "label": "PRD review", "status": "passed", "at": "2026-08-27T01:00:00Z" },
     { "id": "plan", "label": "Plan review", "status": "passed", "at": "2026-08-27T01:00:00Z" },
     { "id": "testing", "label": "User testing", "status": "pending", "at": null },
-    { "id": "pr-develop", "label": "PR feat→develop", "status": "pending", "at": null },
+    { "id": "pr-develop", "label": "PR feat→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/26" },
     { "id": "pr-main", "label": "PR develop→main", "status": "pending", "at": null }
   ],
   "steps": [
