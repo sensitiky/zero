@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-27T00:30:00Z",
+  "updatedAt": "2026-08-27T15:00:00Z",
   "flow": "bug",
   "way": "incu/bugs",
   "discipline": "development",
@@ -19,7 +19,7 @@
   ],
   "gates": [
     { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-27T00:30:00Z" },
-    { "id": "pr", "label": "PR fix->develop", "status": "pending", "at": null }
+    { "id": "pr", "label": "PR fix->develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/24" }
   ],
   "steps": [
     { "id": "A1", "label": "Change ProviderDescriptor.codex.versionCommand from [\"version\"] to [\"--version\"]", "status": "done" },
