@@ -7,6 +7,9 @@ struct ConversationPane: View {
     @Bindable var model: AppModel
     @Bindable var coordinator: SessionCoordinator
     @Environment(\.colorScheme) private var scheme
+    /// Drives the handoff popover, opened either from the exhaustion card's action or from the
+    /// always-available trigger in `modeRow` (010-provider-handoff, FR-3/FR-4).
+    @State private var showingHandoff = false
 
     var body: some View {
         if let project = model.selectedProject, model.selectedSession == nil {
@@ -27,11 +30,22 @@ struct ConversationPane: View {
                     // It rises from the composer edge, because a question that blocks the agent
                     // arriving silently is a question that gets missed (FR-20.3).
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else if session.contextExhausted {
+                    // Same slot `PermissionPrompt` uses, for the same reason: a card here rises
+                    // right where the next message would go, rather than as one more line lost in
+                    // scrollback.
+                    ContextExhaustedCard(
+                        continueAction: { showingHandoff = true },
+                        dismiss: { model.dismissContextExhausted(sessionID: session.id) }
+                    )
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 modeRow(session: session)
                 composer(session: session)
             }
             .zeroAnimation(Theme.Motion.arrival, value: session.pendingPermission?.id)
+            .zeroAnimation(Theme.Motion.arrival, value: session.contextExhausted)
             .zeroSurface(scheme)
         } else {
             EmptyStatePane(
@@ -51,6 +65,27 @@ struct ConversationPane: View {
                     Task { await coordinator.setPermissionMode(mode, for: session.id) }
                 }
                 Spacer(minLength: 0)
+                // Always available, not only when `session.contextExhausted` — the auto-offered
+                // card above is one way in, this is the other (010-provider-handoff, FR-4).
+                Button {
+                    showingHandoff = true
+                } label: {
+                    Image(systemName: "arrow.turn.up.right")
+                }
+                .buttonStyle(.borderless)
+                .help("Continue this conversation in a new session, on another provider or model")
+                .accessibilityLabel("Continue this conversation in a new session")
+                .popover(isPresented: $showingHandoff, arrowEdge: .bottom) {
+                    // A popover is already a floating container, same reasoning as the usage ring
+                    // and the bridge panel — no second rounded panel nested inside itself.
+                    HandoffSheet(
+                        source: session,
+                        model: model,
+                        coordinator: coordinator,
+                        dismiss: { showingHandoff = false }
+                    )
+                    .presentationBackground(.thickMaterial)
+                }
             }
             if session.permissionMode == .bypass {
                 BypassWarning()

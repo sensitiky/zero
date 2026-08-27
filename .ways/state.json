@@ -1,44 +1,50 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-27T00:55:00Z",
-  "flow": "bug",
-  "way": "incu/bugs",
+  "updatedAt": "2026-08-27T03:00:00Z",
+  "flow": "feature",
+  "way": "incu/dev",
   "wayVersion": "",
   "discipline": "development",
-  "slug": "009-session-model-not-applied",
-  "branch": "fix/009-session-model-not-applied",
-  "worktree": "",
-  "isolationType": "branch",
-  "title": "Session model picker has no effect on which model actually runs",
+  "slug": "010-provider-handoff",
+  "branch": "feat/010-provider-handoff",
+  "worktree": ".worktrees/010-provider-handoff",
+  "isolationType": "worktree",
+  "title": "Cross-provider conversation handoff on context exhaustion",
   "ticket": null,
-  "lastPhase": "validation",
-  "phase": "pr",
+  "lastPhase": "implementation",
+  "phase": "validation",
   "documents": [
-    { "name": "BUG.md", "path": "docs/bugs/009-session-model-not-applied/BUG.md", "status": "done" },
-    { "name": "ANALYSIS.md", "path": "docs/bugs/009-session-model-not-applied/ANALYSIS.md", "status": "approved" },
-    { "name": "FIX_PLAN.md", "path": "docs/bugs/009-session-model-not-applied/FIX_PLAN.md", "status": "approved" }
+    { "name": "PRD.md", "path": "docs/prds/010-provider-handoff/PRD.md", "status": "approved" },
+    { "name": "PLAN.md", "path": "docs/prds/010-provider-handoff/PLAN.md", "status": "approved" },
+    { "name": "TESTING.md", "path": "docs/prds/010-provider-handoff/TESTING.md", "status": "in-review" }
   ],
   "gates": [
-    { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-27T00:35:00Z" },
-    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/23" }
+    { "id": "prd", "label": "PRD review", "status": "passed", "at": "2026-08-27T01:00:00Z" },
+    { "id": "plan", "label": "Plan review", "status": "passed", "at": "2026-08-27T01:00:00Z" },
+    { "id": "testing", "label": "User testing", "status": "pending", "at": null },
+    { "id": "pr-develop", "label": "PR feat→develop", "status": "pending", "at": null },
+    { "id": "pr-main", "label": "PR develop→main", "status": "pending", "at": null }
   ],
   "steps": [
-    { "id": "A1", "label": "Add SessionRuntime.modelArguments(provider:model:) helper", "status": "done" },
-    { "id": "A2", "label": "Wire modelArguments into create()'s extraArguments", "status": "done" },
-    { "id": "A3", "label": "Add model to Restored, wire modelArguments into resume()'s extraArguments", "status": "done" },
-    { "id": "T1", "label": "Add resume-side model coverage next to resumePassesTheProviderSessionID", "status": "done" },
-    {
-      "id": "S1",
-      "label": "Security scans WAIVED by the user 2026-08-27 — recorded, not reported clean (Snyk SAST/SCA, SonarQube unavailable in this environment)",
-      "status": "done",
-      "ext": {
-        "incu": {
-          "waived": true,
-          "waivedBy": "user",
-          "waivedAt": "2026-08-27T00:50:00Z",
-          "scans": ["snyk-sast", "snyk-sca", "sonarqube"]
-        }
-      }
-    }
+    { "id": "A1", "label": "Transcript: add contextExhausted flag", "status": "done" },
+    { "id": "A2", "label": "apply(): set flag + notice on .maxTokens", "status": "done" },
+    { "id": "A3", "label": "resolveContextExhausted() method", "status": "done" },
+    { "id": "A4", "label": "TranscriptTests for A1-A3 + rateLimit regression guard", "status": "done" },
+    { "id": "B1", "label": "SessionSnapshot.contextExhausted computed property", "status": "done" },
+    { "id": "B2", "label": "appendUserMessage clears the flag", "status": "done" },
+    { "id": "B3", "label": "AppModel.dismissContextExhausted(sessionID:)", "status": "done" },
+    { "id": "C1", "label": "Transcript-to-prompt serialization helper in ZeroCore", "status": "done" },
+    { "id": "C2", "label": "Unit test for serialization ordering", "status": "done" },
+    { "id": "D1", "label": "Composer: seedable initialText", "status": "done" },
+    { "id": "E1", "label": "HandoffSheet view", "status": "done" },
+    { "id": "E2", "label": "HandoffSheet Start action calls startSession", "status": "done" },
+    { "id": "E3", "label": "No Theme.accent in HandoffSheet (lint gate)", "status": "done" },
+    { "id": "F1", "label": "ConversationPane: exhaustion card", "status": "done" },
+    { "id": "F2", "label": "ConversationPane: manual trigger in modeRow", "status": "done" },
+    { "id": "F3", "label": "No Theme.accent in edited ConversationPane regions", "status": "done" },
+    { "id": "G1", "label": "Build and run app locally", "status": "blocked" },
+    { "id": "G2", "label": "Manual verify: Claude -> Codex handoff", "status": "blocked" },
+    { "id": "G3", "label": "Manual verify: Codex -> Claude handoff", "status": "blocked" },
+    { "id": "G4", "label": "Record ticket-012 dependency status in TESTING.md", "status": "done" }
   ]
 }
