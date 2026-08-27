@@ -43,7 +43,11 @@ struct UsageIndicator: View {
                 Circle()
                     .trim(from: 0, to: fraction)
                     .stroke(
-                        Theme.foreground(scheme).opacity(
+                        // The one deliberate second use of the accent token (see FR-8,
+                        // `docs/prds/004-ui-visual-overhaul/PRD.md`): the filled arc reads context
+                        // severity through color, not just weight. Still redundant with the arc
+                        // length and the opacity step, so no meaning is color-only (WCAG 1.4.1).
+                        Theme.accent.opacity(
                             fraction > Theme.Mark.gaugeWarning ? 1 : Theme.Mark.gauge
                         ),
                         style: StrokeStyle(lineWidth: 2.5, lineCap: .round)

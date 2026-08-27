@@ -151,10 +151,18 @@ justifica el producto entero — el diff — es hoy una concatenación que se le
 
 ### El acento: uno, y un solo trabajo
 
-- **FR-8** — Existe **un único** color de acento, aplicado exclusivamente al estado "el agente te está
-  esperando": `StateDot` cuando `awaiting` es true, y la superficie de permiso pendiente. Ningún otro
-  uso — ni acciones primarias (eso lo sigue diciendo el relleno), ni estado de sesión, ni enlaces, ni
-  el anillo de uso.
+- **FR-8** — Existe **un único** color de acento, aplicado casi exclusivamente al estado "el agente
+  te está esperando": `StateDot` cuando `awaiting` es true, y la superficie de permiso pendiente.
+  Ningún otro uso — ni acciones primarias (eso lo sigue diciendo el relleno), ni estado de sesión, ni
+  enlaces.
+
+  > **Enmienda posterior al envío (`011-usage-ring-color`, 2026-08-27).** El anillo de uso pasa a ser
+  > una segunda excepción deliberada, aprobada por el usuario: su arco relleno usa el acento,
+  > graduado en opacidad por el mismo peso de `Theme.Mark.gauge` / `gaugeWarning` que ya tenía. Esto
+  > reabre un requisito de un PRD ya **Approved** y mergeado (ver historial de este archivo) — no es
+  > alcance nuevo de `011-usage-ring-color`, es una corrección retroactiva a este texto, hecha porque
+  > el usuario aprobó explícitamente la excepción. FR-9 y FR-10 siguen aplicando sin cambios al valor
+  > ampliado.
 - **FR-9** — El acento es **refuerzo redundante, nunca el único portador**: `StateDot` conserva su
   anillo y la superficie de permiso conserva su forma, de modo que la misma información llega sin
   percibir el color (WCAG 1.4.1). Esto es lo que permite agregar un matiz sin romper el argumento de

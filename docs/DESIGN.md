@@ -42,8 +42,9 @@ sitting between two backgrounds 16.74:1 apart maximizes its weaker side at 4.09:
 comfortably above the bar. **Whatever this value becomes, both numbers get measured and written
 here**; that is the rule, not the hue.
 
-It appears in exactly two places — `StateDot` when a session is waiting on you, and the pending
-permission card — and `Scripts/lint-design-tokens.sh` fails the build if a third file references it.
+It appears in exactly three places — `StateDot` when a session is waiting on you, the pending
+permission card, and the usage ring's filled arc (see The usage ring, below) — and
+`Scripts/lint-design-tokens.sh` fails the build if a fourth file references it.
 
 **It is always redundant.** The dot keeps its ring at full foreground weight and the card keeps its
 floating shape and shadow, so desaturate the screen and the same information is still there (WCAG
@@ -164,6 +165,13 @@ dot instead — when the model's context window is unknown, because a ring claim
 a wrong or invented one is worse than an honest "we don't know." It sits immediately left of the
 send button in both composers: the two things that live at the end of every message are what it
 costs and the control that sends it.
+
+The filled arc is the accent token's second, deliberate use (an exception to FR-8 of
+`004-ui-visual-overhaul`, approved by the user): opacity-graded by the same `Theme.Mark.gauge` /
+`gaugeWarning` weights as before, so "nearly full" still reads as a step to full weight, now in
+color as well. It stays redundant rather than load-bearing — the arc's length and its opacity step
+already carry the same information — so the accent's "never the only carrier of meaning" argument
+(FR-9) still holds. The unfilled track and the "unknown" dot stay on the plain foreground token.
 
 **State without color.** `StateDot` in the sidebar uses opacity and a ring, not hue, to distinguish
 running / idle / finished / waiting-for-you. `PlanList` uses glyphs (`○ ◐ ●`), not colored

@@ -56,22 +56,26 @@ check "no animation outside .zeroAnimation" \
     '(^|[^o])\.animation\(|withAnimation\(' \
     'Use .zeroAnimation(_:value:) with a Theme.Motion duration so reduced motion is honoured.'
 
-# FR-8 is "one accent, one job", and the only thing that keeps it true next month is counting. The
-# accent is allowed in StateDot (the waiting session) and PermissionPrompt (the waiting card), plus
+# FR-8 is "one accent, one job (plus one deliberate, documented exception)", and the only thing
+# that keeps it true next month is counting. The accent is allowed in StateDot (the waiting
+# session), PermissionPrompt (the waiting card), and UsageIndicator (the context-severity ring —
+# opacity-graded, always redundant with the arc length, never the sole carrier of meaning), plus
 # Theme.swift where it is defined.
 ACCENT_FILES="$(grep -rl 'Theme\.accent' Sources/Zero --include='*.swift' | sort || true)"
 EXPECTED="Sources/Zero/Permissions/PermissionPrompt.swift
-Sources/Zero/Sidebar/StateDot.swift"
+Sources/Zero/Sidebar/StateDot.swift
+Sources/Zero/UsageIndicator.swift"
 if [ "$ACCENT_FILES" != "$EXPECTED" ]; then
-    echo "✗ accent used in exactly two views"
-    echo "  Theme.accent means one thing — the agent is waiting for you — and marks only the state"
-    echo "  dot and the permission card. Anything else needs fill, shape or position instead."
+    echo "✗ accent used in exactly three views"
+    echo "  Theme.accent means one thing — the agent is waiting for you — plus one documented"
+    echo "  exception, the usage ring's severity fill. Anything else needs fill, shape or position"
+    echo "  instead."
     echo "  expected:"; echo "$EXPECTED" | sed 's/^/    /'
     echo "  found:"; echo "${ACCENT_FILES:-(none)}" | sed 's/^/    /'
     echo
     FAILED=1
 else
-    echo "✓ accent used in exactly two views"
+    echo "✓ accent used in exactly three views"
 fi
 
 if [ "$FAILED" -ne 0 ]; then
