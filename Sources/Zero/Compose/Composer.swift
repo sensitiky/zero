@@ -21,17 +21,42 @@ struct Composer<Trailing: View>: View {
     /// The compose screen opens with the cursor already in the box; the reply composer does not
     /// steal focus from a conversation you are reading.
     var autofocus: Bool = false
+    /// Pre-fills the field, editable before it is ever sent — the handoff sheet seeds this with the
+    /// source session's transcript (010-provider-handoff). Every other call site keeps the default
+    /// empty draft.
+    var initialText: String = ""
     let onSubmit: (String) -> Void
     /// What sits between the usage ring and the trailing edge — the send control, or whatever
     /// replaces it. `ConversationPane` swaps in Stop while the agent is running.
-    @ViewBuilder let trailing: (_ submit: @escaping () -> Void, _ enabled: Bool) -> Trailing
+    let trailing: (_ submit: @escaping () -> Void, _ enabled: Bool) -> Trailing
 
     @Environment(\.colorScheme) private var scheme
     /// Plain state rather than `@FocusState`: focus now comes from the text view's responder
     /// transitions, because `ComposerTextView` is an AppKit view and SwiftUI's focus system does not
     /// reach into one.
     @State private var focused = false
-    @State private var draft = ""
+    @State private var draft: String
+
+    init(
+        placeholder: String,
+        fieldLabel: String,
+        usage: Usage,
+        canSubmit: Bool = true,
+        autofocus: Bool = false,
+        initialText: String = "",
+        onSubmit: @escaping (String) -> Void,
+        @ViewBuilder trailing: @escaping (_ submit: @escaping () -> Void, _ enabled: Bool) -> Trailing
+    ) {
+        self.placeholder = placeholder
+        self.fieldLabel = fieldLabel
+        self.usage = usage
+        self.canSubmit = canSubmit
+        self.autofocus = autofocus
+        self.initialText = initialText
+        self.onSubmit = onSubmit
+        self.trailing = trailing
+        _draft = State(initialValue: initialText)
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {

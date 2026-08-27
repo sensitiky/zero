@@ -174,4 +174,75 @@ struct TranscriptTests {
         transcript.resolvePermission()
         #expect(transcript.pendingPermission == nil)
     }
+
+    // MARK: - Context exhaustion (010-provider-handoff)
+
+    @Test("a turn ending on maxTokens flags context exhaustion and leaves a notice")
+    func maxTokensFlagsContextExhaustion() {
+        var transcript = Transcript()
+        transcript.apply(.textDelta("here is as far as I got"))
+        #expect(transcript.apply(.turnEnded(.maxTokens)) == .idle)
+
+        #expect(transcript.contextExhausted)
+        let notices = transcript.entries.compactMap {
+            if case .notice(_, let text) = $0 { return text }
+            return nil
+        }
+        #expect(notices == ["Context limit reached."])
+    }
+
+    @Test("an ordinary turn end sets neither the flag nor a notice")
+    func ordinaryTurnEndDoesNotFlagExhaustion() {
+        var transcript = Transcript()
+        transcript.apply(.textDelta("done"))
+        #expect(transcript.apply(.turnEnded(.endTurn)) == .idle)
+
+        #expect(!transcript.contextExhausted)
+        #expect(transcript.entries.allSatisfy {
+            if case .notice = $0 { return false }
+            return true
+        })
+    }
+
+    @Test("resolveContextExhausted clears the flag")
+    func resolveContextExhaustedClearsTheFlag() {
+        var transcript = Transcript()
+        transcript.apply(.turnEnded(.maxTokens))
+        #expect(transcript.contextExhausted)
+
+        transcript.resolveContextExhausted()
+        #expect(!transcript.contextExhausted)
+    }
+
+    @Test("handoffPrompt replays only user/assistant text, in order, role-tagged")
+    func handoffPromptReplaysOnlyTalk() {
+        var transcript = Transcript()
+        transcript.appendUserMessage("Fix the bug")
+        transcript.apply(.textDelta("Looking into it."))
+        transcript.apply(.toolCall(ToolCall(id: "t1", name: "Read", status: .running)))
+        transcript.apply(.thinkingDelta("hmm"))
+        transcript.apply(.textDelta("Found it."))
+        transcript.appendNotice("Context limit reached.")
+
+        #expect(
+            transcript.handoffPrompt
+                == "User: Fix the bug\n\nAssistant: Looking into it.\n\nAssistant: Found it."
+        )
+    }
+
+    @Test("rate limiting is unchanged by context-exhaustion handling (regression guard)")
+    func rateLimitBehaviorUnchanged() {
+        var transcript = Transcript()
+        #expect(transcript.apply(.rateLimit(status: "allowed", resetsAt: nil)) == nil)
+        #expect(transcript.entries.isEmpty)
+        #expect(!transcript.contextExhausted)
+
+        #expect(transcript.apply(.rateLimit(status: "throttled", resetsAt: nil)) == nil)
+        let notices = transcript.entries.compactMap {
+            if case .notice(_, let text) = $0 { return text }
+            return nil
+        }
+        #expect(notices == ["Rate limited: throttled"])
+        #expect(!transcript.contextExhausted)
+    }
 }
