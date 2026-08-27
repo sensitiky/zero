@@ -301,4 +301,47 @@ struct ProviderRegistryTests {
             return
         }
     }
+
+    // Regression coverage for bug 012-codex-version-check-fails: `codex version` requires a TTY
+    // and fails with empty stdout on real Codex CLI installs (verified against `codex-cli
+    // 0.150.1`); `codex --version` is the correct, non-interactive-safe flag. This fake script
+    // mimics that exact real-world shape so the test doesn't depend on Codex being installed.
+    @Test("codex descriptor's version command resolves against the real Codex CLI's shape")
+    func codexVersionCommandResolvesAgainstRealCLIShape() throws {
+        let scriptDir = tempDir.appendingPathComponent("codex-repro-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: scriptDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scriptDir) }
+
+        let fakeCodex = scriptDir.appendingPathComponent("codex")
+        let script = """
+        #!/bin/sh
+        if [ "$1" = "--version" ]; then
+            echo "codex-cli 0.150.1"
+            exit 0
+        fi
+        echo "Error: stdin is not a terminal" >&2
+        exit 1
+        """
+        try script.write(toFile: fakeCodex.path, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: fakeCodex.path
+        )
+
+        let registry = ProviderRegistry(candidateDirectories: [scriptDir])
+
+        let status = registry.status(of: ProviderDescriptor.codex)
+        guard case .available(let version) = status else {
+            Issue.record(
+                "Expected available status using the real Codex CLI's --version shape, got \(status)"
+            )
+            return
+        }
+        #expect(version == "codex-cli 0.150.1")
+    }
+
+    @Test("codex descriptor pins the corrected version command")
+    func codexDescriptorPinsCorrectedVersionCommand() {
+        #expect(ProviderDescriptor.codex.versionCommand == ["--version"])
+    }
 }
