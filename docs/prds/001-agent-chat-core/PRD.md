@@ -202,9 +202,9 @@ Toolchain de referencia, verificado en la máquina de desarrollo:
 | SDK           | macOS 26.5 — el único instalado |
 | Target triple | `arm64-apple-macosx26.0`        |
 
-- **Deployment target: macOS 26.0.** Es el default del toolchain instalado y la propuesta del PRD. Consecuencia deliberada: cero ramas de `@available` en todo el código, y acceso directo al SwiftUI y al lenguaje de diseño de macOS 26 sin fallbacks. Coste: excluye macOS 15 y anteriores. Ver Open Questions — la decisión depende de si el repo es público.
+- **Deployment target: macOS 15.0.** Revisado el 2026-08-27 — el piso original de macOS 26.0 requería `Mutex.withLock` (framework `Synchronization`), que solo existe desde macOS 15; por debajo de eso no compila. Consecuencia: el código sigue sin ramas de `@available` (nada usado hoy es exclusivo de macOS 26), pero ya no hay garantía de que el lenguaje de diseño de macOS 26 (materiales, controles) tenga fallback visual en Sequoia — no verificado aún corriendo la app en macOS 15/25.
 - Swift 6 con strict concurrency activado en modo completo. Los adapters son el núcleo concurrente de la app (un subproceso, dos pipes y un stream por sesión), así que el aislamiento lo verifica el compilador y no la revisión.
-- Apple Silicon únicamente. Sin binario universal ni soporte Intel.
+- Intel y Apple Silicon. Revisado el 2026-08-27 — nada en `Package.swift` ni en el código fuerza `arm64`-only; la restricción previa era solo de intención, no aplicada por el build.
 - Sin dependencias de terceros salvo justificación explícita caso por caso.
 - Distribución fuera del App Sandbox: DMG firmado y notarizado con Hardened Runtime. El sandbox queda descartado por diseño, porque prohíbe lanzar binarios arbitrarios y leer rutas del usuario, que son el núcleo del producto.
 - El toolchain se fija en el repo (`.swift-version` y la versión de Xcode documentada) para que el build sea reproducible y no dependa de qué tenga instalado quien compile.
@@ -248,9 +248,10 @@ Creación de sesión desde un solo campo con selector de agente. Command palette
 demás. La regla que gobierna cada decisión de esta capa: si algo se ve como salida de terminal,
 está mal renderizado.
 
-Al fijar el deployment target en macOS 26, la app adopta el lenguaje de diseño del sistema
-directamente, sin capa de compatibilidad. Los materiales y controles son los nativos de la
-versión, no una reimplementación.
+Al fijar el deployment target en macOS 15 (piso revisado el 2026-08-27, antes 26.0), la app sigue
+adoptando el lenguaje de diseño del sistema directamente, sin capa de compatibilidad propia — pero
+ya no está garantizado que sea el mismo lenguaje visual de macOS 26 en versiones anteriores; los
+materiales y controles son los nativos de la versión que ejecuta la app en cada caso.
 
 ### Paleta
 
@@ -269,7 +270,8 @@ Suelo para texto secundario: `paper` al 70% sobre `ink` da 7.91:1 y sigue cumpli
 cae a 5.10:1, que solo cumple AA. **El 70% es el piso**: por debajo de eso, no.
 
 El logo es monocromo de alto contraste, así que funciona en ambos temas sin variante — igual que
-el deployment target en macOS 26 evita ramas de compatibilidad, esto evita un segundo asset.
+el deployment target único (sin ramas de `@available`) evita ramas de compatibilidad, esto evita
+un segundo asset.
 
 ## Decisiones resueltas
 
@@ -313,9 +315,12 @@ Ninguna. Las tres que quedaban abiertas se cerraron con decisión del usuario:
 - **Nombre del producto: Zero.** Bundle id `the.stool.zero`. Prefijo de rama de worktree
   `zero/{slug}-{id-corto}`.
 - **Repo privado, de uso propio.** Sin licencia pública ni distribución a terceros en v1.
-- **Piso de versión: macOS 26.0.** Confirmado. Cero `@available` en todo el código, Apple
-  Silicon únicamente, y auto-update descartado también a futuro mientras el repo siga privado
-  (lo que convierte en definitiva la decisión resuelta sobre Sparkle).
+- **Piso de versión: macOS 15.0, Intel y Apple Silicon.** Revisado el 2026-08-27 (original:
+  macOS 26.0, Apple Silicon únicamente). El piso subió de 14.0 a 15.0 porque `Mutex.withLock`
+  (framework `Synchronization`, usado en `ClientChannel.swift`) no compila por debajo de macOS
+  15. La restricción a Apple Silicon se retira: nunca estuvo aplicada por el build, solo
+  documentada. Auto-update sigue descartado a futuro mientras el repo siga privado (decisión
+  sobre Sparkle sin cambios).
 
 ## Conflicts / dependencies
 

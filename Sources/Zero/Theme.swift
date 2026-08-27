@@ -16,7 +16,8 @@ enum Theme {
 
     /// Neither pure black nor pure white appears anywhere: `ink` on `paper` measures 16.74:1, against
     /// 21:1 for `#000`/`#fff` — below the theoretical maximum and well past the 7:1 that WCAG AAA
-    /// asks for. Deployment target is macOS 26, so there are no availability branches here.
+    /// asks for. Deployment target is macOS 15.0; nothing here is exclusive to a newer macOS, so
+    /// there are no availability branches.
     static let ink = Color(red: 0x13 / 255, green: 0x13 / 255, blue: 0x13 / 255)
     static let paper = Color(red: 0xF3 / 255, green: 0xF3 / 255, blue: 0xF3 / 255)
 
