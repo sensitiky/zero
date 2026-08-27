@@ -1,44 +1,29 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-27T00:55:00Z",
+  "updatedAt": "2026-08-27T00:30:00Z",
   "flow": "bug",
   "way": "incu/bugs",
-  "wayVersion": "",
   "discipline": "development",
-  "slug": "009-session-model-not-applied",
-  "branch": "fix/009-session-model-not-applied",
-  "worktree": "",
-  "isolationType": "branch",
-  "title": "Session model picker has no effect on which model actually runs",
+  "slug": "012-codex-version-check-fails",
+  "branch": "fix/012-codex-version-check-fails",
+  "worktree": ".worktrees/012-codex-version-check-fails",
+  "isolationType": "worktree",
+  "title": "Codex CLI always reports resolutionFailed - version-check command is wrong",
   "ticket": null,
-  "lastPhase": "validation",
-  "phase": "pr",
+  "lastPhase": "implementation",
+  "phase": "validation",
   "documents": [
-    { "name": "BUG.md", "path": "docs/bugs/009-session-model-not-applied/BUG.md", "status": "done" },
-    { "name": "ANALYSIS.md", "path": "docs/bugs/009-session-model-not-applied/ANALYSIS.md", "status": "approved" },
-    { "name": "FIX_PLAN.md", "path": "docs/bugs/009-session-model-not-applied/FIX_PLAN.md", "status": "approved" }
+    { "name": "BUG.md", "path": "docs/bugs/012-codex-version-check-fails/BUG.md", "status": "approved" },
+    { "name": "ANALYSIS.md", "path": "docs/bugs/012-codex-version-check-fails/ANALYSIS.md", "status": "approved" },
+    { "name": "FIX_PLAN.md", "path": "docs/bugs/012-codex-version-check-fails/FIX_PLAN.md", "status": "approved" }
   ],
   "gates": [
-    { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-27T00:35:00Z" },
-    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/23" }
+    { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-27T00:30:00Z" },
+    { "id": "pr", "label": "PR fix->develop", "status": "pending", "at": null }
   ],
   "steps": [
-    { "id": "A1", "label": "Add SessionRuntime.modelArguments(provider:model:) helper", "status": "done" },
-    { "id": "A2", "label": "Wire modelArguments into create()'s extraArguments", "status": "done" },
-    { "id": "A3", "label": "Add model to Restored, wire modelArguments into resume()'s extraArguments", "status": "done" },
-    { "id": "T1", "label": "Add resume-side model coverage next to resumePassesTheProviderSessionID", "status": "done" },
-    {
-      "id": "S1",
-      "label": "Security scans WAIVED by the user 2026-08-27 — recorded, not reported clean (Snyk SAST/SCA, SonarQube unavailable in this environment)",
-      "status": "done",
-      "ext": {
-        "incu": {
-          "waived": true,
-          "waivedBy": "user",
-          "waivedAt": "2026-08-27T00:50:00Z",
-          "scans": ["snyk-sast", "snyk-sca", "sonarqube"]
-        }
-      }
-    }
+    { "id": "A1", "label": "Change ProviderDescriptor.codex.versionCommand from [\"version\"] to [\"--version\"]", "status": "done" },
+    { "id": "A2", "label": "Regression test: status(of: .codex) resolves against real Codex CLI --version shape", "status": "done" },
+    { "id": "A3", "label": "Regression test: pin ProviderDescriptor.codex.versionCommand == [\"--version\"]", "status": "done" }
   ]
 }
