@@ -31,6 +31,10 @@ public struct Transcript: Sendable, Equatable {
     public private(set) var entries: [Entry] = []
     public private(set) var usage = Usage()
     public private(set) var pendingPermission: PermissionRequest?
+    /// Set when a turn ends with `StopReason.maxTokens` — the provider ran out of context, not
+    /// merely finished. Cleared by `resolveContextExhausted()` or by sending another message in
+    /// this session (`AppModel.appendUserMessage`); never persisted, same as `pendingPermission`.
+    public private(set) var contextExhausted = false
     /// The latest assistant text, condensed for a one-line summary.
     public private(set) var summary = ""
 
@@ -93,8 +97,12 @@ public struct Transcript: Sendable, Equatable {
         case .sessionReady, .turnStarted:
             return .running
 
-        case .turnEnded:
+        case .turnEnded(let reason):
             openAssistantEntryID = nil
+            if reason == .maxTokens {
+                contextExhausted = true
+                entries.append(.notice(id: UUID(), text: "Context limit reached."))
+            }
             return .idle
 
         case .failed(let reason):
@@ -108,6 +116,30 @@ public struct Transcript: Sendable, Equatable {
 
     public mutating func resolvePermission() {
         pendingPermission = nil
+    }
+
+    /// Clears the context-exhausted flag — an explicit dismiss, or (via `AppModel.appendUserMessage`)
+    /// simply continuing the conversation on the same provider.
+    public mutating func resolveContextExhausted() {
+        contextExhausted = false
+    }
+
+    /// The conversation so far, rendered as plain role-tagged text — the opening prompt for a new
+    /// session handed off to a different provider (010-provider-handoff).
+    ///
+    /// Reads straight from `entries` rather than re-deriving from `Session.orderedMessages`: this
+    /// is exactly the same content (`Transcript.restoring` already builds `entries` from those rows),
+    /// and using it means a handoff needs no store round-trip and works identically for a live or a
+    /// restored session. Only `.userText`/`.assistantText` are replayed — tool calls, plans,
+    /// thinking and notices are working detail, not part of what was said.
+    public var handoffPrompt: String {
+        entries.compactMap { entry in
+            switch entry {
+            case .userText(_, let text): return "User: \(text)"
+            case .assistantText(_, let text): return "Assistant: \(text)"
+            case .thinking, .tool, .plan, .notice: return nil
+            }
+        }.joined(separator: "\n\n")
     }
 
     /// One line, no newlines, bounded. The sidebar has one line of room, and a summary that wraps to

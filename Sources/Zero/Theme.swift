@@ -27,14 +27,20 @@ enum Theme {
     /// not a smaller number.
     static let secondaryOpacity: Double = 0.7
 
-    /// The one hue in the app, and it has exactly one job: "the agent is waiting for you". It marks
-    /// `StateDot` when `awaiting` is true and the pending permission surface, and nothing else — not
-    /// primary actions (fill already says that), not session state, not links, not the usage ring.
+    /// The one hue in the app. Its primary job is "the agent is waiting for you", marking
+    /// `StateDot` when `awaiting` is true and the pending permission surface — not primary actions
+    /// (fill already says that), not session state, not links.
     ///
-    /// It is never the only carrier of that meaning. The dot keeps its ring and the card keeps its
-    /// shape, so the same information arrives without perceiving the hue at all (WCAG 1.4.1) — which
-    /// is what lets a hue exist here without breaking the accessibility argument the monochrome rule
-    /// was built on.
+    /// **One deliberate, documented exception:** the usage ring's filled arc (`UsageIndicator`)
+    /// also uses this token, opacity-graded by context severity (`011-usage-ring-color`, amending
+    /// FR-8 of `004-ui-visual-overhaul` after that PRD had already shipped — see that PRD's FR-8 for
+    /// the amendment note). `Scripts/lint-design-tokens.sh` counts exactly these three files, plus
+    /// this one where the token is defined; a fourth use anywhere else fails the build.
+    ///
+    /// It is never the only carrier of that meaning, in either use. The dot keeps its ring, the card
+    /// keeps its shape, and the ring keeps its fraction and opacity step, so the same information
+    /// arrives without perceiving the hue at all (WCAG 1.4.1) — which is what lets a hue exist here
+    /// without breaking the accessibility argument the monochrome rule was built on.
     ///
     /// **Chosen by eye, then measured.** `#8B5CF6` is 4.39:1 against `ink` and 3.82:1 against
     /// `paper`. It never renders text, so the threshold that applies is the 3:1 of WCAG 1.4.11 for

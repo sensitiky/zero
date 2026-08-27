@@ -87,7 +87,7 @@ public struct ProviderDescriptor: Sendable {
         id: "codex",
         displayName: "Codex",
         executableCandidates: ["codex"],
-        versionCommand: ["version"],
+        versionCommand: ["--version"],
         minimumVersion: "1.0.0",
         launchArguments: ["app-server"]
     )

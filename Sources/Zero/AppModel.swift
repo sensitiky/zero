@@ -58,6 +58,8 @@ final class AppModel {
         var events: [Transcript.Entry] { transcript.entries }
         var usage: Usage { transcript.usage }
         var pendingPermission: PermissionRequest? { transcript.pendingPermission }
+        /// The provider ran out of context on the last turn — offer a handoff to another one.
+        var contextExhausted: Bool { transcript.contextExhausted }
 
         /// The dim second line: what this session is doing, falling back to what it was asked.
         var summary: String {
@@ -173,6 +175,9 @@ final class AppModel {
     func appendUserMessage(_ text: String, to sessionID: UUID) {
         guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
         sessions[index].transcript.appendUserMessage(text)
+        // Continuing the conversation here, on the same provider, is itself a decision that
+        // supersedes the handoff offer.
+        sessions[index].transcript.resolveContextExhausted()
         sessions[index].state = .running
     }
 
@@ -187,6 +192,12 @@ final class AppModel {
         guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
         sessions[index].transcript.resolvePermission()
         sessions[index].state = .running
+    }
+
+    /// Dismisses the "continue with another provider" card without acting on it.
+    func dismissContextExhausted(sessionID: UUID) {
+        guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        sessions[index].transcript.resolveContextExhausted()
     }
 
     /// Records the mode a relaunch is about to run under. `SessionCoordinator` calls this once the
