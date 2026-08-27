@@ -1,29 +1,42 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-27T15:00:00Z",
-  "flow": "bug",
-  "way": "incu/bugs",
+  "updatedAt": "2026-08-27T15:30:00Z",
+  "flow": "feature",
+  "way": "incu/dev",
+  "wayVersion": "",
   "discipline": "development",
-  "slug": "012-codex-version-check-fails",
-  "branch": "fix/012-codex-version-check-fails",
-  "worktree": ".worktrees/012-codex-version-check-fails",
+  "slug": "011-usage-ring-color",
+  "branch": "feat/011-usage-ring-color",
+  "worktree": ".worktrees/011-usage-ring-color",
   "isolationType": "worktree",
-  "title": "Codex CLI always reports resolutionFailed - version-check command is wrong",
+  "title": "Color the usage ring by context severity using the accent token",
   "ticket": null,
-  "lastPhase": "implementation",
+  "lastPhase": "plan",
   "phase": "validation",
   "documents": [
-    { "name": "BUG.md", "path": "docs/bugs/012-codex-version-check-fails/BUG.md", "status": "approved" },
-    { "name": "ANALYSIS.md", "path": "docs/bugs/012-codex-version-check-fails/ANALYSIS.md", "status": "approved" },
-    { "name": "FIX_PLAN.md", "path": "docs/bugs/012-codex-version-check-fails/FIX_PLAN.md", "status": "approved" }
+    { "name": "PRD.md", "path": "docs/prds/011-usage-ring-color/PRD.md", "status": "approved" },
+    { "name": "PLAN.md", "path": "docs/prds/011-usage-ring-color/PLAN.md", "status": "approved" },
+    { "name": "TESTING.md", "path": "docs/prds/011-usage-ring-color/TESTING.md", "status": "approved" }
   ],
   "gates": [
-    { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-27T00:30:00Z" },
-    { "id": "pr", "label": "PR fix->develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/24" }
+    { "id": "prd", "label": "PRD review", "status": "passed", "at": "2026-08-27T15:00:00Z" },
+    { "id": "plan", "label": "Plan review", "status": "passed", "at": "2026-08-27T15:00:00Z" },
+    { "id": "testing", "label": "User testing", "status": "pending", "at": null },
+    { "id": "pr-develop", "label": "PR feat→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/25" },
+    { "id": "pr-main", "label": "PR develop→main", "status": "pending", "at": null }
   ],
   "steps": [
-    { "id": "A1", "label": "Change ProviderDescriptor.codex.versionCommand from [\"version\"] to [\"--version\"]", "status": "done" },
-    { "id": "A2", "label": "Regression test: status(of: .codex) resolves against real Codex CLI --version shape", "status": "done" },
-    { "id": "A3", "label": "Regression test: pin ProviderDescriptor.codex.versionCommand == [\"--version\"]", "status": "done" }
+    { "id": "A1", "label": "Recolor UsageIndicator.ring's filled arc to Theme.accent", "status": "done" },
+    { "id": "A2", "label": "Confirm the diff in ring is scoped to the fill color only", "status": "done" },
+    { "id": "B1", "label": "Add UsageIndicator.swift to lint-design-tokens.sh's accent allowlist", "status": "done" },
+    { "id": "B2", "label": "Run lint-design-tokens.sh and confirm a clean pass", "status": "done" },
+    { "id": "C1", "label": "Update DESIGN.md 'one accent' section to three places / fourth-file check", "status": "done" },
+    { "id": "C2", "label": "Update DESIGN.md usage-ring paragraph to describe the accent fill", "status": "done" },
+    { "id": "D1", "label": "Amend FR-8 in the shipped 004-ui-visual-overhaul PRD, with a post-ship amendment note", "status": "done" },
+    { "id": "D2", "label": "Confirm FR-9/FR-10 still read correctly unchanged", "status": "done" },
+    { "id": "E1", "label": "Update Theme.swift's accent doc comment to drop the 'not the usage ring' exclusion", "status": "done" },
+    { "id": "F1", "label": "Confirm no new unit-testable logic (pure Color token swap)", "status": "done" },
+    { "id": "F2", "label": "Write manual verification checklist / TESTING.md", "status": "done" },
+    { "id": "F3", "label": "swift build && swift test — full suite green, no regressions", "status": "done" }
   ]
 }
