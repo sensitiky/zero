@@ -67,6 +67,14 @@ public actor AgentProcess {
     /// processing after them — is what makes the drain safe.
     private let ioQueue = DispatchQueue(label: "AgentProcess.io")
 
+    /// Entered before a readability handler dispatches its read onto `ioQueue`, left after that
+    /// read completes. `readabilityHandler = nil` only stops *future* firings — an invocation
+    /// already under way (data arrived right as the process exits) can still be between "started"
+    /// and "enqueued its `ioQueue.async`" when termination runs. Waiting on this group closes that
+    /// window: without it, a record enqueued a moment too late lands after `continuation.finish()`
+    /// and is silently dropped (`echo first; echo second` racing exit is exactly this).
+    private let ioInFlight = DispatchGroup()
+
     public init(configuration: Configuration) {
         _ = sigpipeIgnored
         self.configuration = configuration
@@ -90,14 +98,19 @@ public actor AgentProcess {
         let continuation = self.continuation
         let reader = self.reader
         let ioQueue = self.ioQueue
+        let ioInFlight = self.ioInFlight
 
         let stdoutHandle = stdoutPipe.fileHandleForReading
         let stderrHandle = stderrPipe.fileHandleForReading
 
         // The handler only gets *notified* data is available; the actual `read(2)` (`availableData`)
         // happens inside `ioQueue`, same as the termination drain below — that's what serializes them.
+        // `ioInFlight.enter()` happens synchronously, before the dispatch, so termination can wait
+        // out an invocation that's started but hasn't reached `ioQueue.async` yet.
         stdoutPipe.fileHandleForReading.readabilityHandler = { _ in
+            ioInFlight.enter()
             ioQueue.async {
+                defer { ioInFlight.leave() }
                 let chunk = stdoutHandle.availableData
                 guard !chunk.isEmpty else { return }
                 do {
@@ -111,7 +124,9 @@ public actor AgentProcess {
         }
 
         stderrPipe.fileHandleForReading.readabilityHandler = { _ in
+            ioInFlight.enter()
             ioQueue.async {
+                defer { ioInFlight.leave() }
                 let chunk = stderrHandle.availableData
                 guard !chunk.isEmpty, let text = String(data: chunk, encoding: .utf8) else { return }
                 continuation.yield(.diagnostic(text))
@@ -125,10 +140,12 @@ public actor AgentProcess {
             // CLI rejecting a flag, say — can terminate before the handler has read a single byte.
             // Finishing the stream here without draining silently discarded that output, leaving
             // callers with an exit code and no explanation of it. Cancelling the handlers here stops
-            // *new* reads from being scheduled; running the drain itself on `ioQueue` (synchronously)
-            // waits out any read already in flight before stealing its bytes.
+            // *new* reads from being scheduled; waiting on `ioInFlight` closes out one already under
+            // way; running the drain itself on `ioQueue` (synchronously) waits out any read already
+            // enqueued before stealing its bytes.
             stdoutHandle.readabilityHandler = nil
             stderrHandle.readabilityHandler = nil
+            ioInFlight.wait()
 
             ioQueue.sync {
                 if let remaining = try? stdoutHandle.readToEnd(), !remaining.isEmpty {

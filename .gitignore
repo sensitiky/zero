@@ -8,3 +8,4 @@ xcuserdata/
 .build-*/
 .claude/worktrees/
 build/
+.ways/cache/
