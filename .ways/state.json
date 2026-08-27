@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-27T00:50:00Z",
+  "updatedAt": "2026-08-27T00:55:00Z",
   "flow": "bug",
   "way": "incu/bugs",
   "wayVersion": "",
@@ -20,7 +20,7 @@
   ],
   "gates": [
     { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-27T00:35:00Z" },
-    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null }
+    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/23" }
   ],
   "steps": [
     { "id": "A1", "label": "Add SessionRuntime.modelArguments(provider:model:) helper", "status": "done" },
