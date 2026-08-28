@@ -108,7 +108,24 @@ struct MarkdownBody: View {
     }
 
     private var blocks: [RenderedBlock] {
-        rendered ?? [.paragraph(text: AttributedString(text))]
+        guard let rendered else {
+            // The synchronous fallback before `.task` below has resolved — SwiftUI lays this out
+            // on the very first render, so it must already be through `Markdown.blocks(of:)`'s
+            // length cap (cheap: just a line split) rather than wrapping the raw `text` whole. A
+            // pathologically large message reaching `Text` here, uncapped, is what hung the app
+            // on launch before this: docs/bugs/014-transcript-huge-message-hang.
+            return Markdown.blocks(of: text).map { block in
+                switch block {
+                case .heading(let level, let content):
+                    .heading(level: level, text: AttributedString(content))
+                case .code(let language, let content):
+                    .code(language: language, text: content)
+                case .paragraph(let content):
+                    .paragraph(text: AttributedString(content))
+                }
+            }
+        }
+        return rendered
     }
 
     private enum RenderedBlock {

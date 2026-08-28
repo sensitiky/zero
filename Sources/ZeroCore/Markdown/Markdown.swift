@@ -43,6 +43,23 @@ public enum Markdown {
         )) ?? AttributedString(text)
     }
 
+    /// The longest a single block's text may be before it reaches `Text`.
+    ///
+    /// docs/bugs/014-transcript-huge-message-hang: a 247,142-character message (the whole prior
+    /// transcript, seeded and sent whole by the `010-provider-handoff` composer) survived as one
+    /// uncapped paragraph, and CoreText never returned laying it out — the app opened to a
+    /// permanently blank window. 20,000 is generous for any real paragraph or pasted code/diff,
+    /// far below where text layout gets expensive.
+    static let maxBlockLength = 20_000
+
+    /// Caps `text` at `maxBlockLength`, appending how much was cut so the truncation is visible
+    /// rather than silent.
+    private static func capped(_ text: String) -> String {
+        guard text.count > maxBlockLength else { return text }
+        let cut = text.count - maxBlockLength
+        return text.prefix(maxBlockLength) + "\n\n… (truncated, \(cut) more characters)"
+    }
+
     /// Splits into headings, fenced code blocks, and paragraphs. Deliberately not a full CommonMark
     /// parser: lists and blockquotes pass through as plain paragraph text, which reads fine — the
     /// two things that render outright broken without this split are literal ``` fences and stray
@@ -56,7 +73,7 @@ public enum Markdown {
 
         func flushParagraph() {
             guard !paragraph.isEmpty else { return }
-            result.append(.paragraph(text: paragraph.joined(separator: "\n")))
+            result.append(.paragraph(text: capped(paragraph.joined(separator: "\n"))))
             paragraph = []
         }
 
@@ -65,7 +82,7 @@ public enum Markdown {
 
             if line.hasPrefix("```") {
                 if inCode {
-                    result.append(.code(language: codeLanguage, text: codeLines.joined(separator: "\n")))
+                    result.append(.code(language: codeLanguage, text: capped(codeLines.joined(separator: "\n"))))
                     codeLines = []
                     codeLanguage = nil
                     inCode = false
@@ -86,7 +103,7 @@ public enum Markdown {
             if let level = headingLevel(of: line) {
                 flushParagraph()
                 let content = String(line.drop(while: { $0 == "#" })).trimmingCharacters(in: .whitespaces)
-                result.append(.heading(level: level, text: content))
+                result.append(.heading(level: level, text: capped(content)))
                 continue
             }
 
@@ -101,7 +118,7 @@ public enum Markdown {
         // An unterminated fence still shows what streamed in so far — mid-stream, a code block's
         // closing ``` may not have arrived yet, and losing the content until it does would be worse.
         if inCode {
-            result.append(.code(language: codeLanguage, text: codeLines.joined(separator: "\n")))
+            result.append(.code(language: codeLanguage, text: capped(codeLines.joined(separator: "\n"))))
         }
         flushParagraph()
         return result
