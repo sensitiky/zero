@@ -130,4 +130,25 @@ struct MarkdownTests {
     func bareHashIsNotAHeading() {
         #expect(Markdown.strippingHeadingMarker("#nospace") == "#nospace")
     }
+
+    // MARK: - Safety: oversized input
+    //
+    // docs/bugs/014-transcript-huge-message-hang: a session whose first message was 247,142
+    // characters (the whole prior transcript, seeded and sent by the 010-provider-handoff
+    // composer) hung the app on launch — the message survived as one uncapped block, and
+    // CoreText never returned from laying it out as a single `Text`. Nothing downstream of
+    // `blocks(of:)` may see a block that large.
+
+    @Test("a pathologically large single-block message is capped, not handed whole to text layout")
+    func hugeMessageIsCapped() {
+        let huge = String(repeating: "a", count: 300_000)
+        let blocks = Markdown.blocks(of: huge)
+        let longest = blocks.map { block -> Int in
+            switch block {
+            case .heading(_, let text), .paragraph(let text): text.count
+            case .code(_, let text): text.count
+            }
+        }.max() ?? 0
+        #expect(longest < 300_000, "a 300k-char message must not survive as one uncapped block")
+    }
 }
