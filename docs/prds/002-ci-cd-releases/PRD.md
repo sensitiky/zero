@@ -46,9 +46,10 @@ ya usa `make-app.sh`), no notarizada.
 
 ## Non-functional requirements
 - Sin secrets nuevos: nada de firma real, nada de credenciales de notarización.
-- Corre en runner `macos-latest` de GitHub (hosted) — no self-hosted. Si esa imagen todavía no
-  trae el SDK de macOS 26.0 (deployment target del `Package.swift`), el job falla en el build y
-  hay que pinnear una imagen más nueva cuando GitHub la publique.
+- Corre en runner `macos-latest` de GitHub (hosted) — no self-hosted. El deployment target del
+  `Package.swift` bajó a macOS 15.0 (revisado 2026-08-27; antes 26.0), así que el riesgo de que
+  la imagen hosted no traiga el SDK necesario es mínimo — cualquier `macos-latest` reciente lo
+  cubre. Si algún día el target vuelve a subir, revisar de nuevo esta nota.
 
 ## Data model changes
 Ninguno.
@@ -58,8 +59,8 @@ Ninguna — es tooling de CI, no toca la app.
 
 ## Open questions
 1. **Runner.** ~~Resuelto~~ — `macos-latest` (hosted). El usuario prefiere no depender de un
-   self-hosted runner; si `macos-latest` no trae el SDK 26.0 todavía, se ajusta el `runs-on`
-   cuando falle.
+   self-hosted runner; si `macos-latest` no trae el SDK necesario (macOS 15.0+ desde el
+   2026-08-27), se ajusta el `runs-on` cuando falle.
 
 ## Conflicts / dependencies
 - Reemplaza el `0.1.0` fijo en `Scripts/make-app.sh` por un valor parametrizable — no rompe el uso
