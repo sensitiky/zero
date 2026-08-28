@@ -93,17 +93,23 @@ public actor AgentProcess {
         let stdoutHandle = stdoutPipe.fileHandleForReading
         let stderrHandle = stderrPipe.fileHandleForReading
 
-        // A blocking read-to-EOF loop, one per pipe, each on its own queue so neither starves the
-        // other. `availableData` returns as soon as *any* data is ready — so this still streams
-        // live, chunk by chunk — and returns empty exactly at EOF, which a pipe only reaches once
-        // every writer has closed it, i.e. once the child process has actually exited. That is a
-        // stronger, race-free signal than `FileHandle.readabilityHandler`: a handler only gets
-        // *notified* data is ready, on its own asynchronous schedule, so a process exiting right
-        // after writing (`echo first; echo second`) could race the notification against
-        // termination and lose the last write. Reading to true EOF can't lose anything — there is
-        // nothing left to race against once the loop itself has seen the pipe close.
+        // A blocking read-to-EOF loop, one per pipe, each on its own dedicated `Thread` — not a
+        // GCD global-queue `.async`. `availableData` returns as soon as *any* data is ready — so
+        // this still streams live, chunk by chunk — and returns empty exactly at EOF, which a
+        // pipe only reaches once every writer has closed it, i.e. once the child process has
+        // actually exited. That is a stronger, race-free signal than `FileHandle.readabilityHandler`:
+        // a handler only gets *notified* data is ready, on its own asynchronous schedule, so a
+        // process exiting right after writing (`echo first; echo second`) could race the
+        // notification against termination and lose the last write. Reading to true EOF can't lose
+        // anything — there is nothing left to race against once the loop itself has seen the pipe
+        // close. A dedicated `Thread` rather than `DispatchQueue.global().async` matters here for
+        // the same reason: this loop parks a thread on a blocking syscall for the process's whole
+        // lifetime, and GCD's global concurrent queues are pooled and QoS-throttled — under a
+        // loaded CI runner running many sessions' worth of these at once, that pool can be slow to
+        // grow, delaying (in the flaky run this replaced) when the loop even gets a thread to run
+        // on. A `Thread` is requested straight from the kernel and isn't shared with anything else.
         readersDone.enter()
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread {
             defer { readersDone.leave() }
             while true {
                 let chunk = stdoutHandle.availableData
@@ -120,10 +126,10 @@ public actor AgentProcess {
             if let trailing = reader.flush() {
                 continuation.yield(.record(trailing))
             }
-        }
+        }.start()
 
         readersDone.enter()
-        DispatchQueue.global(qos: .userInitiated).async {
+        Thread {
             defer { readersDone.leave() }
             while true {
                 let chunk = stderrHandle.availableData
@@ -131,7 +137,7 @@ public actor AgentProcess {
                 guard let text = String(data: chunk, encoding: .utf8) else { continue }
                 continuation.yield(.diagnostic(text))
             }
-        }
+        }.start()
 
         process.terminationHandler = { process in
             // Waits for both loops above to have actually observed EOF — not merely for the
