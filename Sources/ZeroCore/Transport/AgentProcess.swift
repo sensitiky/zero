@@ -59,21 +59,12 @@ public actor AgentProcess {
     private let reader: LineReader
     private var running = false
 
-    /// Every read of stdout/stderr — from the readability handlers and from the termination-time
-    /// drain below — happens on this one serial queue. Without it, a process that exits right
-    /// after writing (`echo first; echo second`) races `readabilityHandler`'s read against
-    /// `terminationHandler`'s `readToEnd()`: both call `read(2)` on the same pipe, whichever wins
-    /// gets the bytes, and the loser silently sees nothing. Serializing the reads — not just the
-    /// processing after them — is what makes the drain safe.
-    private let ioQueue = DispatchQueue(label: "AgentProcess.io")
-
-    /// Entered before a readability handler dispatches its read onto `ioQueue`, left after that
-    /// read completes. `readabilityHandler = nil` only stops *future* firings — an invocation
-    /// already under way (data arrived right as the process exits) can still be between "started"
-    /// and "enqueued its `ioQueue.async`" when termination runs. Waiting on this group closes that
-    /// window: without it, a record enqueued a moment too late lands after `continuation.finish()`
-    /// and is silently dropped (`echo first; echo second` racing exit is exactly this).
-    private let ioInFlight = DispatchGroup()
+    /// Reaches zero once both the stdout and stderr read loops below have observed EOF.
+    /// `terminationHandler` waits on it before yielding `.exited` — see `start()` for why a
+    /// blocking read-to-EOF loop, not `FileHandle.readabilityHandler`, is what actually closes
+    /// the race between a process exiting right after writing and its output being drained
+    /// (`echo first; echo second` losing "second" is exactly what this fixes).
+    private let readersDone = DispatchGroup()
 
     public init(configuration: Configuration) {
         _ = sigpipeIgnored
@@ -97,70 +88,56 @@ public actor AgentProcess {
 
         let continuation = self.continuation
         let reader = self.reader
-        let ioQueue = self.ioQueue
-        let ioInFlight = self.ioInFlight
+        let readersDone = self.readersDone
 
         let stdoutHandle = stdoutPipe.fileHandleForReading
         let stderrHandle = stderrPipe.fileHandleForReading
 
-        // The handler only gets *notified* data is available; the actual `read(2)` (`availableData`)
-        // happens inside `ioQueue`, same as the termination drain below — that's what serializes them.
-        // `ioInFlight.enter()` happens synchronously, before the dispatch, so termination can wait
-        // out an invocation that's started but hasn't reached `ioQueue.async` yet.
-        stdoutPipe.fileHandleForReading.readabilityHandler = { _ in
-            ioInFlight.enter()
-            ioQueue.async {
-                defer { ioInFlight.leave() }
+        // A blocking read-to-EOF loop, one per pipe, each on its own queue so neither starves the
+        // other. `availableData` returns as soon as *any* data is ready — so this still streams
+        // live, chunk by chunk — and returns empty exactly at EOF, which a pipe only reaches once
+        // every writer has closed it, i.e. once the child process has actually exited. That is a
+        // stronger, race-free signal than `FileHandle.readabilityHandler`: a handler only gets
+        // *notified* data is ready, on its own asynchronous schedule, so a process exiting right
+        // after writing (`echo first; echo second`) could race the notification against
+        // termination and lose the last write. Reading to true EOF can't lose anything — there is
+        // nothing left to race against once the loop itself has seen the pipe close.
+        readersDone.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            defer { readersDone.leave() }
+            while true {
                 let chunk = stdoutHandle.availableData
-                guard !chunk.isEmpty else { return }
+                if chunk.isEmpty { break }
                 do {
                     for record in try reader.feed(chunk) {
                         continuation.yield(.record(record))
                     }
                 } catch {
                     continuation.yield(.streamFailure(String(describing: error)))
+                    break
                 }
+            }
+            if let trailing = reader.flush() {
+                continuation.yield(.record(trailing))
             }
         }
 
-        stderrPipe.fileHandleForReading.readabilityHandler = { _ in
-            ioInFlight.enter()
-            ioQueue.async {
-                defer { ioInFlight.leave() }
+        readersDone.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            defer { readersDone.leave() }
+            while true {
                 let chunk = stderrHandle.availableData
-                guard !chunk.isEmpty, let text = String(data: chunk, encoding: .utf8) else { return }
+                if chunk.isEmpty { break }
+                guard let text = String(data: chunk, encoding: .utf8) else { continue }
                 continuation.yield(.diagnostic(text))
             }
         }
 
         process.terminationHandler = { process in
-            // Drain what is still in the pipes before finishing.
-            //
-            // `readabilityHandler` fires asynchronously, so a process that exits immediately — a
-            // CLI rejecting a flag, say — can terminate before the handler has read a single byte.
-            // Finishing the stream here without draining silently discarded that output, leaving
-            // callers with an exit code and no explanation of it. Cancelling the handlers here stops
-            // *new* reads from being scheduled; waiting on `ioInFlight` closes out one already under
-            // way; running the drain itself on `ioQueue` (synchronously) waits out any read already
-            // enqueued before stealing its bytes.
-            stdoutHandle.readabilityHandler = nil
-            stderrHandle.readabilityHandler = nil
-            ioInFlight.wait()
-
-            ioQueue.sync {
-                if let remaining = try? stdoutHandle.readToEnd(), !remaining.isEmpty {
-                    if let records = try? reader.feed(remaining) {
-                        for record in records { continuation.yield(.record(record)) }
-                    }
-                }
-                if let trailing = reader.flush() {
-                    continuation.yield(.record(trailing))
-                }
-                if let remaining = try? stderrHandle.readToEnd(), !remaining.isEmpty,
-                   let text = String(data: remaining, encoding: .utf8) {
-                    continuation.yield(.diagnostic(text))
-                }
-            }
+            // Waits for both loops above to have actually observed EOF — not merely for the
+            // process to have exited — before reporting it, so every byte the child wrote is
+            // yielded ahead of `.exited`.
+            readersDone.wait()
 
             continuation.yield(
                 .exited(code: process.terminationStatus, reason: process.terminationReason)
@@ -210,13 +187,11 @@ public actor AgentProcess {
     public func terminate() {
         guard running else { return }
         running = false
-        stdoutPipe.fileHandleForReading.readabilityHandler = nil
-        stderrPipe.fileHandleForReading.readabilityHandler = nil
         if process.isRunning { process.terminate() }
     }
 }
 
-/// Holds the accumulator across `readabilityHandler` invocations, which arrive on an arbitrary
+/// Holds the accumulator across the stdout read loop's invocations, which happen on a background
 /// queue and therefore cannot touch actor state directly.
 private final class LineReader: @unchecked Sendable {
     private let lock = NSLock()
