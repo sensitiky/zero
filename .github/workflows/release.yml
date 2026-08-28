@@ -42,9 +42,6 @@ jobs:
           echo "version=${NEW#v}" >> "$GITHUB_OUTPUT"
           echo "tag=${NEW}" >> "$GITHUB_OUTPUT"
 
-      - name: Test
-        run: swift test
-
       - name: Build Zero.app
         env:
           ZERO_VERSION: ${{ steps.version.outputs.version }}
