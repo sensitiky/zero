@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "updatedAt": "2026-08-28T16:20:00Z",
+  "updatedAt": "2026-08-28T16:35:00Z",
   "flow": "bug",
   "way": "incu/dev",
   "wayVersion": "",
@@ -11,8 +11,8 @@
   "isolationType": "branch",
   "title": "App opens but shows nothing — transcript hangs on a huge message",
   "ticket": null,
-  "lastPhase": "implementation",
-  "phase": "validation",
+  "lastPhase": "validation",
+  "phase": "pr",
   "documents": [
     { "name": "BUG.md", "path": "docs/bugs/014-transcript-huge-message-hang/BUG.md", "status": "approved" },
     { "name": "ANALYSIS.md", "path": "docs/bugs/014-transcript-huge-message-hang/ANALYSIS.md", "status": "approved" },
@@ -20,7 +20,7 @@
   ],
   "gates": [
     { "id": "fix-plan", "label": "Fix plan review", "status": "passed", "at": "2026-08-28T16:00:00Z" },
-    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null }
+    { "id": "pr", "label": "PR fix→develop", "status": "pending", "at": null, "url": "https://github.com/sensitiky/zero/pull/30" }
   ],
   "steps": [
     { "id": "A1", "label": "Cap block length in Markdown.blocks(of:) (ZeroCore)", "status": "done" },
